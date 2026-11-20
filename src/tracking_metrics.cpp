@@ -126,6 +126,14 @@ void MotEvaluator::addFrame(
     if (visible && mt != nullptr && !h.ever_moved) {
       ++s_.never_moved_frames;
       s_.never_moved_as_moving += mt->motion == MotionState::kMoving;
+      static const bool dbg = std::getenv("HELIOS_FP_DEBUG") != nullptr;
+      if (dbg && mt->motion == MotionState::kMoving) {
+        std::fprintf(stderr, "FALSEMOV t=%.1f gt=%d trk=%u %s upd=%d d=%.2f win=%.2f+-%.2f surf=%.2f "
+          "size=(%.2f,%.2f) gtpos=(%.2f,%.2f)\n", time, g.id, mt->id, toString(mt->state),
+          mt->updated ? 1 : 0, (g.position - Eigen::Vector2d(mt->center.x(), mt->center.y())).norm(),
+          mt->window_speed, mt->window_speed_sigma, mt->surface_speed, mt->size.x(), mt->size.y(),
+          g.position.x(), g.position.y());
+      }
     }
     if (j < 0) {
       if (visible) {
@@ -147,6 +155,12 @@ void MotEvaluator::addFrame(
     if (it != last_match_.end() && it->second != t.id) {
       ++s_.idsw;
       ++s_.idsw_by_gt[g.id];
+      static const bool dbg = std::getenv("HELIOS_FP_DEBUG") != nullptr;
+      if (dbg) {
+        std::fprintf(stderr, "IDSW t=%.1f gt=%d %u -> %u (%s %s) d=%.2f\n", time, g.id,
+          it->second, t.id, toString(t.state), toString(t.motion),
+          (g.position - Eigen::Vector2d(t.center.x(), t.center.y())).norm());
+      }
     }
     last_match_[g.id] = t.id;
     ++co_[{g.id, t.id}];

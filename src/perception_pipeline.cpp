@@ -44,6 +44,7 @@ void PipelineConfig::validate()
   ego.validate();
   // with a background map, STATIC means "part of the static background" only
   tracker.static_requires_background = static_map.enabled;
+  tracker.max_range = filter.max_range;   // occlusion test: beyond -> out of range
   tracker.validate();
   static_map.validate();
   risk.validate();
@@ -146,6 +147,7 @@ void PerceptionPipeline::processFiltered(const CloudPtr & roi, double stamp, Fra
       }
     };
   const bool estimate_ego = config_.ego_mode == EgoMode::kEstimate;
+  bool map_pending = false;
 
   if (static_map_) {
     // ---- ego-motion first (the background map lives in the odometry frame) -------------------
@@ -159,8 +161,10 @@ void PerceptionPipeline::processFiltered(const CloudPtr & roi, double stamp, Fra
     // ---- background / foreground split, separate clustering ----------------------------------
     pcl::Indices bg, fg;
     const bool usable = out.ego.valid && out.ego.state != EgoState::kUnknown;
+    out.background_points = 0;
     if (usable) {
-      static_map_->processFrame(*obstacle_cloud, out.ego.pose, stamp, bg, fg);
+      static_map_->classify(*obstacle_cloud, out.ego.pose, stamp, bg, fg);
+      map_pending = true;   // inserted after tracking (track-guided update)
     } else {
       fg.resize(obstacle_cloud->size());
       for (std::size_t i = 0; i < fg.size(); ++i) {
@@ -279,6 +283,25 @@ void PerceptionPipeline::processFiltered(const CloudPtr & roi, double stamp, Fra
     z.center = t.center.head<2>() + t.relative_velocity * kDt;
     z.radius = 0.5F * t.size.head<2>().norm() + 0.3F + t.relative_velocity.norm() * kDt;
     exclusions_.push_back(z);
+  }
+  // static map insertion after tracking: points of objects that moved within static_time_s
+  // (clusters of their tracks) do not accumulate static time
+  if (map_pending) {
+    std::vector<std::uint8_t> dyn(out.obstacle_cloud->size(), 0);
+    for (const auto & t : out.tracks) {
+      if (t.detection_index < 0 || t.large_structure ||
+        !(t.time_since_moving_s < config_.static_map.static_time_s))
+      {
+        continue;
+      }
+      const auto & o = out.obstacles[static_cast<std::size_t>(t.detection_index)];
+      if (o.indices != nullptr) {
+        for (const auto i : *o.indices) {
+          dyn[static_cast<std::size_t>(i)] = 1;
+        }
+      }
+    }
+    static_map_->insert(stamp, &dyn);
   }
   const auto t6 = Clock::now();
 

@@ -229,7 +229,7 @@ TEST(Tracker, StaticObjectSeenFromMovingSensorStaysStatic)
   EXPECT_LT(out[0].relative_velocity.x(), -1.5F);
 }
 
-TEST(Tracker, CoastsThenDeletesAndResetsOnTimeJump)
+TEST(Tracker, OccludedThenLostAndResetsOnTimeJump)
 {
   TrackerConfig cfg;
   cfg.max_coast_time_s = 0.5F;
@@ -242,7 +242,9 @@ TEST(Tracker, CoastsThenDeletesAndResetsOnTimeJump)
   const auto id = out[0].id;
   trk.update(2.0, {}, stationaryEgo(), out);
   ASSERT_EQ(out.size(), 1u);
-  EXPECT_EQ(out[0].state, TrackState::kCoasting);
+  EXPECT_EQ(out[0].state, TrackState::kOccluded);
+  EXPECT_TRUE(out[0].predicted);
+  EXPECT_EQ(out[0].occlusion, OcclusionReason::kUnexplained);   // no cloud: free line of sight
   EXPECT_FALSE(out[0].updated);
   trk.update(2.1, {det(4.F, 0.F)}, stationaryEgo(), out);   // re-acquired: same id
   ASSERT_EQ(out.size(), 1u);

@@ -77,6 +77,16 @@ public:
     symmetrize();
   }
 
+  /// Replaces the velocity by v with an isotropic sigma and no position/velocity correlation
+  /// (static motion model while an object is not observed).
+  void resetVelocity(const Vec2 & v, double sigma)
+  {
+    x_.tail<2>() = v;
+    P_.topRightCorner<2, 2>().setZero();
+    P_.bottomLeftCorner<2, 2>().setZero();
+    P_.bottomRightCorner<2, 2>() = sigma * sigma * Mat2::Identity();
+  }
+
   const Vec4 & x() const noexcept {return x_;}
   const Mat4 & P() const noexcept {return P_;}
   Vec2 position() const {return x_.head<2>();}

@@ -250,7 +250,7 @@ MarkerArray buildTrackMarkers(
     setColor(text, Rgb{1.F, 1.F, 1.F}, 1.F);
     char line1[64], line2[64], line3[64];
     std::snprintf(line1, sizeof(line1), "ID%u %s%s%s", t.id, motionTag(t.motion),
-      t.large_structure ? " L" : "", t.state == TrackState::kCoasting ? " (pred)" : "");
+      t.large_structure ? " L" : "", t.predicted ? " (pred)" : "");
     if (t.velocity_reliable) {
       if (t.heading_valid) {
         std::snprintf(line2, sizeof(line2), "%.1f+-%.1fm/s %.0fdeg", t.speed, t.speed_sigma,

@@ -7,8 +7,22 @@
 //    uncertainty of this frame's ego-motion increment (yaw error -> lateral error ~ range).
 //  * Association: gated (chi-square + metric gate) global optimal assignment (Hungarian) on
 //    cost = NIS + ln|S|.
-//  * Lifecycle: TENTATIVE -> CONFIRMED after `confirm_hits`; COASTING while unobserved; deleted
-//    after `max_coast_time_s` (confirmed) or `tentative_max_misses` (tentative).
+//  * Lifecycle (v0.3, occlusion aware):
+//      TENTATIVE --confirm_hits--> CONFIRMED --miss--> OCCLUDED --hit--> CONFIRMED
+//      OCCLUDED --(unexplained for max_coast_time_s | occluded for occluded_max_time_s |
+//                  position sigma > max_position_sigma)--> LOST
+//      LOST --re-identified--> CONFIRMED,  LOST --lost_max_time_s--> DELETED
+//      TENTATIVE --more than tentative_max_misses misses--> DELETED
+//    An occlusion is "explained" when something nearer covers the predicted azimuth span, the
+//    predicted box lies inside another object's cluster (merge) or it is out of range; only then
+//    is a track kept for the long occlusion time. OCCLUDED tracks are output as predictions
+//    (flagged, growing covariance); LOST tracks are kept internally for re-identification only.
+//  * Partial-view measurement model: the visible points of an object lie inside its full box, so
+//    a shrunken detection only constrains the centre to an interval (per box axis) instead of
+//    dragging it (and the velocity) towards the visible part.
+//  * Merge handling: a cluster that contains the predicted boxes of several established tracks is
+//    split between them by their predicted boxes (at most `merge_max_tracks`), so two people
+//    walking past each other keep their identities.
 //  * Motion classification (UNKNOWN / STATIC / MOVING) combines two independent kinds of evidence
 //      - box-centre regression over a time window (shape-consistent measurements only), and
 //      - point-surface consistency: median 2D nearest-neighbour distance between the track's
@@ -17,10 +31,14 @@
 //        viewpoint-induced box-centre drift that a moving sensor causes.
 //    It also needs a usable ego-motion estimate and persistence for N frames (hysteresis).
 //    Otherwise it stays UNKNOWN - the system never claims "moving" or "static" without evidence.
+//    Lifecycle and motion state are independent: without a measurement (OCCLUDED / LOST) the
+//    motion state is frozen, never re-derived from the prediction.
 #pragma once
 
 #include <cstdint>
 #include <deque>
+#include <limits>
+#include <utility>
 #include <vector>
 
 #include <Eigen/Core>
@@ -32,11 +50,29 @@
 namespace helios_obstacle_detection
 {
 
-enum class TrackState : std::uint8_t {kTentative = 0, kConfirmed = 1, kCoasting = 2};
+enum class TrackState : std::uint8_t {kTentative = 0, kConfirmed = 1, kOccluded = 2, kLost = 3};
 enum class MotionState : std::uint8_t {kUnknown = 0, kStatic = 1, kMoving = 2};
+/// Why an unobserved track is still kept (OCCLUDED / LOST).
+enum class OcclusionReason : std::uint8_t
+{
+  kNone = 0,          // observed in this scan
+  kOccluder = 1,      // something nearer covers the predicted azimuth span
+  kMerged = 2,        // predicted box inside another object's cluster
+  kOutOfRange = 3,    // beyond the usable range
+  kUnexplained = 4    // line of sight looks free: object vanished / missed by segmentation
+};
+/// Trust in the ground-relative velocity / heading / TTC of a track.
+enum class VelocityStatus : std::uint8_t
+{
+  kUnknown = 0,       // no ground reference (ego motion unknown) or no estimate yet
+  kUnreliable = 1,    // estimate exists but is predicted / too uncertain / ego unreliable
+  kReliable = 2
+};
 
 const char * toString(TrackState s) noexcept;
 const char * toString(MotionState s) noexcept;
+const char * toString(OcclusionReason s) noexcept;
+const char * toString(VelocityStatus s) noexcept;
 
 struct TrackerConfig
 {
@@ -51,8 +87,24 @@ struct TrackerConfig
   float max_gate_distance{3.0F};        // [m]
   int confirm_hits{3};
   int tentative_max_misses{2};
-  float max_coast_time_s{0.8F};
-  float max_position_sigma{2.0F};       // [m] tracks more uncertain than this are dropped
+  float max_coast_time_s{0.8F};         // [s] unexplained disappearance -> LOST
+  float occluded_max_time_s{2.5F};      // [s] explained occlusion (occluder / merge) -> LOST
+  float lost_max_time_s{2.0F};          // [s] LOST tracks kept for re-identification
+  float max_position_sigma{2.0F};       // [m] OCCLUDED tracks more uncertain -> LOST
+  float occlusion_bin_deg{1.0F};        // azimuth resolution of the occlusion test
+  float occlusion_margin{0.3F};         // [m] an occluder must be this much nearer
+  float reid_max_distance{3.0F};        // [m] re-identification gate of LOST tracks
+  float reid_speed{1.0F};               // [m/s] gate growth with the lost time (unmodelled motion)
+  // association cost terms (dimensionless, added to NIS + ln|S|)
+  float size_cost_weight{1.0F};         // log-size mismatch / ln(1.5), squared
+  float iou_cost_weight{1.0F};          // (1 - BEV IoU) of predicted track box and detection
+  float background_cost{4.0F};          // dynamic track (ever moved) <-> static-background cluster
+  float max_velocity_sigma{0.6F};       // [m/s] speed sigma above -> velocity UNRELIABLE
+  bool partial_view_model{true};
+  bool merge_split{true};
+  float max_range{30.F};                // [m] usable range (set from the pre-filter)
+  int merge_max_tracks{3};              // hypotheses per merged cluster (bounded)
+  float merge_max_time_s{4.0F};         // [s] tracks merged longer than this are not split
   int max_tracks{256};
   float max_dt{1.0F};                   // [s] larger gaps / negative dt -> reset
   float shape_smoothing{0.3F};          // EMA factor for size / yaw
@@ -73,6 +125,7 @@ struct TrackerConfig
   float point_evidence_override_speed{1.5F};  // [m/s] above: centre regression alone decides
   int snapshot_points{48};
   int motion_hysteresis_frames{2};
+  float motion_evidence_timeout_s{2.0F};  // [s] MOVING without any motion evidence -> UNKNOWN
   // Set by the pipeline when the static background map is enabled: STATIC then means "part of
   // the background (still for >= static_time_s)"; still objects that are not background yet are
   // UNKNOWN (= dynamic, not moving right now).
@@ -88,8 +141,16 @@ struct TrackOutput
   std::uint32_t id{0};
   TrackState state{TrackState::kTentative};
   MotionState motion{MotionState::kUnknown};
+  OcclusionReason occlusion{OcclusionReason::kNone};
+  VelocityStatus velocity_status{VelocityStatus::kUnknown};
+  bool predicted{false};               // no measurement in this scan: position is a prediction
+  bool merged{false};                  // measured from a split merged cluster (partial evidence)
+  bool relative_only{false};           // ego motion unknown: only sensor-relative motion observable
+  float confidence{0.F};               // track existence confidence [0, 1] (heuristic, see docs)
+  float motion_confidence{0.F};        // evidence strength of the motion state [0, 1] (heuristic)
   bool ever_moved{false};
-  bool velocity_reliable{false};
+  float time_since_moving_s{std::numeric_limits<float>::infinity()};  // since last MOVING
+  bool velocity_reliable{false};       // == (velocity_status == kReliable)
   bool large_structure{false};
   bool background{false};              // belongs to the learned static background
   bool updated{false};                 // associated with a detection in this frame
@@ -130,10 +191,19 @@ struct TrackerStats
   std::size_t confirmed{0};
   std::size_t moving{0};
   std::size_t static_tracks{0};
+  std::size_t occluded{0};
+  std::size_t lost{0};
   std::uint64_t created_total{0};
   std::uint64_t deleted_total{0};
   std::uint64_t resets{0};
+  std::uint64_t reidentified_total{0};  // LOST tracks recovered
+  std::uint64_t merge_splits_total{0};  // merged clusters split between tracks
   std::size_t associated{0};
+  // timing of the last update [ms]
+  double predict_ms{0.0};
+  double association_ms{0.0};
+  double occlusion_ms{0.0};             // occlusion test + merge split + re-identification
+  double update_ms{0.0};
   double mean_nis{0.0};                // filter consistency (expected ~2 for 2 dof)
 };
 
@@ -192,6 +262,30 @@ private:
     // odom-frame point snapshots of the object surface (subsampled)
     std::deque<std::pair<double, std::vector<Eigen::Vector2f>>> snapshots;
     float surface_speed{-1.F};
+    // occlusion handling
+    OcclusionReason occlusion{OcclusionReason::kNone};
+    double unexplained_s{0.0};          // accumulated unexplained-miss time since last update
+    double lost_since{-1.0};
+    double merged_since{-1.0};          // first frame of the current merge, -1 if not merged
+    bool merged{false};
+    double last_meas_sigma{0.0};
+    double last_moving{-1.0};           // stamp of the last frame classified MOVING
+    double last_fit{-1.0};              // stamp of the last valid window regression        // largest axis sigma of the last measurement
+  };
+
+  /// Measurement of a track from (part of) a cluster.
+  struct Measurement
+  {
+    Eigen::Vector2d z{Eigen::Vector2d::Zero()};
+    Eigen::Matrix2d R{Eigen::Matrix2d::Identity()};
+    bool partial{false};                // centre constrained by the partial-view model
+    double max_sigma{0.0};
+  };
+  /// Points of a cluster (odom frame, 2D) handed to a track by the merge split.
+  struct SubCluster
+  {
+    int detection{-1};
+    pcl::Indices indices;
   };
 
   Eigen::Matrix2d measurementCov(
@@ -199,15 +293,44 @@ private:
   /// Extra measurement std-dev [m] when the observed box shrank / grew vs. the track shape
   /// (partial occlusion, merge / split): the box centre is then biased.
   double shapeInconsistency(const Track & t, const ObstacleCandidate & d, double yaw_odom) const;
-  void classifyMotion(Track & t, double stamp, bool ego_usable, bool ego_stationary) const;
+  void classifyMotion(
+    Track & t, double stamp, bool ego_usable, bool ego_stationary, bool ego_unreliable) const;
   void updateShape(
     Track & t, const ObstacleCandidate & d, double yaw_odom, bool reset = false) const;
   void updateSurfaceEvidence(
     Track & t, const ObstacleCandidate & d, const Cloud & cloud, double stamp,
     const Eigen::Matrix2d & rot, const Eigen::Vector2d & trans) const;
+  /// Partial-view measurement from the extents [a_min, a_max] x [b_min, b_max] of the visible
+  /// points along the track's box axes (relative to its predicted centre).
+  Measurement partialView(
+    const Track & t, double a_min, double a_max, double b_min, double b_max,
+    const Eigen::Matrix2d & R_extra) const;
+  /// Measurement of track t from detection d (partial-view model when d is smaller than t).
+  Measurement measure(
+    const Track & t, const ObstacleCandidate & d, const Eigen::Vector2d & z_raw,
+    const Eigen::Matrix2d & R_raw, double yaw_odom) const;
+  double sizeCost(const Track & t, const ObstacleCandidate & d, double yaw_odom) const;
+  double iouCost(const Track & t, const ObstacleCandidate & d, const Eigen::Vector2d & c_odom,
+    double yaw_odom) const;
+  void computeOcclusionHorizon(const Cloud & cloud);
+  /// Share of the azimuth span of a box (sensor frame) covered by something nearer than it.
+  double occludedFraction(const Eigen::Vector2d & pos_s, const Eigen::Vector3f & size,
+    double yaw_s) const;
+  /// Dynamic tracks (moved at some point) get the long occlusion time; others only the short one.
+  static bool isDynamic(const Track & t)
+  {
+    return t.ever_moved || t.motion == MotionState::kMoving;
+  }
+  OcclusionReason explainMiss(
+    const Track & t, const Eigen::Vector2d & pos_s, const std::vector<ObstacleCandidate> & dets,
+    const std::vector<Eigen::Vector2d> & det_centres_s) const;
+  float trackConfidence(const Track & t, double stamp) const;
 
   TrackerConfig config_;
   std::vector<Track> tracks_;
+  std::vector<float> horizon_;          // min obstacle range per azimuth bin (this scan)
+  float max_range_seen_{0.F};
+  double last_yaw_{0.0};                // ego yaw of the current scan (odom -> sensor)
   std::uint32_t next_id_{1};
   double last_stamp_{-1.0};
   TrackerStats stats_;
