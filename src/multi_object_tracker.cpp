@@ -107,7 +107,9 @@ void TrackerConfig::validate() const
   }
   if (!(moving_speed > static_speed && static_speed > 0.F &&
     min_age_s >= 0.F && displacement_window_s > 0.F && moving_min_displacement >= 0.F &&
-    motion_hysteresis_frames >= 1 && motion_evidence_timeout_s > 0.F && history_length >= 2 && motion_sigma_factor > 0.F &&
+    motion_hysteresis_frames >= 1 && motion_evidence_timeout_s > 0.F &&
+    onset_sigma_factor > 0.F && onset_min_displacement >= 0.F && onset_min_samples >= 2 &&
+    history_length >= 2 && motion_sigma_factor > 0.F &&
     shape_reset_frames >= 1 && inconsistent_sample_weight >= 0.F &&
     inconsistent_sample_weight <= 1.F &&
     min_motion_samples >= 3 && shape_change_tolerance > 0.F && point_evidence_age_s > 0.F &&
@@ -300,6 +302,81 @@ void MultiObjectTracker::classifyMotion(
     }
   }
 
+  // Motion onset (change-point) test: "still, then moving with constant velocity" fitted over the
+  // window with the onset time searched among the samples. Reacts as soon as the moving part is
+  // significant instead of waiting until the still samples have left the window. The search over
+  // onset times is a multiple test, hence the stricter significance factor, the displacement
+  // and the direction-consistency requirements.
+  t.onset_speed = 0.F;
+  bool onset_moving = false;
+  if (config_.onset_detection && n >= static_cast<std::size_t>(config_.onset_min_samples) + 2) {
+    std::vector<const Track::MotionSample *> smp;
+    smp.reserve(n);
+    for (const auto & q : t.motion_samples) {
+      if (q.w > 0.0) {
+        smp.push_back(&q);   // weighted like the long-window regression
+      }
+    }
+    const std::size_t m = smp.size();
+    const auto min_after = static_cast<std::size_t>(config_.onset_min_samples);
+    double best_rss = std::numeric_limits<double>::infinity();
+    Eigen::Vector2d best_v = Eigen::Vector2d::Zero();
+    double best_sv = std::numeric_limits<double>::infinity(), best_dur = 0.0;
+    for (std::size_t j = 0; m >= min_after + 2 && j + min_after < m; ++j) {
+      const double tau = smp[j]->t;
+      // p_i = a + v * max(0, t_i - tau)
+      double W = 0.0, xm = 0.0;
+      Eigen::Vector2d pm = Eigen::Vector2d::Zero();
+      for (const auto * q : smp) {
+        const double x = std::max(0.0, q->t - tau);
+        W += q->w;
+        xm += q->w * x;
+        pm += q->w * q->p;
+      }
+      xm /= W;
+      pm /= W;
+      double sxx = 0.0;
+      Eigen::Vector2d sxp = Eigen::Vector2d::Zero();
+      for (const auto * q : smp) {
+        const double dx = std::max(0.0, q->t - tau) - xm;
+        sxx += q->w * dx * dx;
+        sxp += q->w * dx * (q->p - pm);
+      }
+      if (sxx < 1e-9) {
+        continue;
+      }
+      const Eigen::Vector2d v = sxp / sxx;
+      double rss = 0.0;
+      for (const auto * q : smp) {
+        rss += q->w * (q->p - (pm + v * (std::max(0.0, q->t - tau) - xm))).squaredNorm();
+      }
+      if (rss < best_rss) {
+        best_rss = rss;
+        best_v = v;
+        const double mm = static_cast<double>(m);
+        const double sr2 = std::max(rss / W * mm / (2.0 * (mm - 3.0)),
+            static_cast<double>(config_.meas_sigma_base * config_.meas_sigma_base) * 0.25);
+        best_sv = std::sqrt(sr2 / sxx);
+        best_dur = smp.back()->t - tau;
+      }
+    }
+    if (std::isfinite(best_rss)) {
+      const double v = best_v.norm();
+      t.onset_speed = static_cast<float>(v);
+      bool consistent_dir = v > 1e-6;
+      if (consistent_dir) {
+        // the last steps must advance along the fitted direction
+        const Eigen::Vector2d u = best_v / v;
+        for (std::size_t k = m - min_after + 1; k < m; ++k) {
+          consistent_dir = consistent_dir && u.dot(smp[k]->p - smp[k - 1]->p) > 0.0;
+        }
+      }
+      onset_moving = consistent_dir && v > config_.moving_speed &&
+        v > config_.onset_sigma_factor * best_sv &&
+        v * best_dur > config_.onset_min_displacement;
+    }
+  }
+
   if (!ego_usable) {
     t.motion = MotionState::kUnknown;  // immediately: no ground reference
     t.pending_count = 0;
@@ -327,7 +404,7 @@ void MultiObjectTracker::classifyMotion(
     const bool fast = v > config_.point_evidence_override_speed;
     // Surface evidence may veto motion only when it says "static": for a slowly walking person
     // the surfaces overlap partially, so the surface rate underestimates the speed.
-    if (reg_moving && (!surface_static || fast)) {
+    if ((reg_moving || onset_moving) && (!surface_static || fast)) {
       cand = MotionState::kMoving;
     } else if (surface_static && !fast) {
       cand = MotionState::kStatic;   // surfaces coincide: centre drift is a viewpoint effect
@@ -336,6 +413,8 @@ void MultiObjectTracker::classifyMotion(
     } else if (t.motion == MotionState::kUnknown) {
       cand = MotionState::kUnknown;
     }
+  } else if (onset_moving && !surface_static) {
+    cand = MotionState::kMoving;
   } else if (surface_static) {
     cand = MotionState::kStatic;   // shape keeps changing (no consistent centres), surfaces fixed
   } else if (n < 2) {

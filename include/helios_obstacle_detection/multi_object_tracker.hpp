@@ -126,6 +126,11 @@ struct TrackerConfig
   int snapshot_points{48};
   int motion_hysteresis_frames{2};
   float motion_evidence_timeout_s{2.0F};  // [s] MOVING without any motion evidence -> UNKNOWN
+  // motion onset (change-point) test inside the window
+  bool onset_detection{true};
+  float onset_sigma_factor{5.0F};       // stricter than motion_sigma_factor (onset time searched)
+  float onset_min_displacement{0.20F};  // [m] since the fitted onset
+  int onset_min_samples{3};             // consistent measurements after the onset
   // Set by the pipeline when the static background map is enabled: STATIC then means "part of
   // the background (still for >= static_time_s)"; still objects that are not background yet are
   // UNKNOWN (= dynamic, not moving right now).
@@ -270,7 +275,8 @@ private:
     bool merged{false};
     double last_meas_sigma{0.0};
     double last_moving{-1.0};           // stamp of the last frame classified MOVING
-    double last_fit{-1.0};              // stamp of the last valid window regression        // largest axis sigma of the last measurement
+    double last_fit{-1.0};              // stamp of the last valid window regression
+    float onset_speed{0.F};             // speed of the change-point fit (diagnostics)        // largest axis sigma of the last measurement
   };
 
   /// Measurement of a track from (part of) a cluster.

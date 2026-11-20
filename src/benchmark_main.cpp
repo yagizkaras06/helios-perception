@@ -63,7 +63,11 @@ struct Args
   bool no_static_map{false};
   int dump_frame{-1};
   std::string dump_prefix;
-  unsigned seed{7};              // scenario layout / timing (start_stop) and sensor noise
+  unsigned seed{7};
+  double onset_sigma{-1.0};
+  double onset_disp{-1.0};
+  int onset_samples{-1};
+  int no_onset{0};              // scenario layout / timing (start_stop) and sensor noise
 };
 
 /// Debug dump of one processed frame: points with labels + tracks (CSV, for plotting).
@@ -128,6 +132,18 @@ PipelineConfig benchConfig(const Args & a)
   }
   if (a.min_disp >= 0) {
     pc.tracker.moving_min_displacement = static_cast<float>(a.min_disp);
+  }
+  if (a.onset_sigma > 0) {
+    pc.tracker.onset_sigma_factor = static_cast<float>(a.onset_sigma);
+  }
+  if (a.onset_disp >= 0) {
+    pc.tracker.onset_min_displacement = static_cast<float>(a.onset_disp);
+  }
+  if (a.onset_samples > 0) {
+    pc.tracker.onset_min_samples = a.onset_samples;
+  }
+  if (a.no_onset) {
+    pc.tracker.onset_detection = false;
   }
   pc.static_map.enabled = !a.no_static_map;
   pc.static_map.static_time_s = static_cast<float>(a.static_time);
@@ -564,6 +580,14 @@ int main(int argc, char ** argv)
       a.no_static_map = true;
     } else if (o == "--trace-gt") {
       a.trace_gt = std::stoi(next());
+    } else if (o == "--onset-sigma") {
+      a.onset_sigma = std::stod(next());
+    } else if (o == "--onset-disp") {
+      a.onset_disp = std::stod(next());
+    } else if (o == "--onset-samples") {
+      a.onset_samples = std::stoi(next());
+    } else if (o == "--no-onset") {
+      a.no_onset = 1;
     } else if (o == "--seed") {
       a.seed = static_cast<unsigned>(std::stoul(next()));
     } else if (o == "--repeat") {

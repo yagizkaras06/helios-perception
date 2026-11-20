@@ -96,8 +96,18 @@ void MotEvaluator::addFrame(
     if (h.onset >= 0.0) {
       if (mt != nullptr && mt->motion == MotionState::kMoving) {
         s_.onset_latency_s.push_back(time - h.onset);
+        static const bool dbg = std::getenv("HELIOS_FP_DEBUG") != nullptr;
+        if (dbg) {
+          std::fprintf(stderr, "ONSET gt=%d t=%.1f latency=%.0f ms range=%.1f speed=%.2f\n", g.id,
+            h.onset, 1000.0 * (time - h.onset), g.position.norm(), g.velocity.norm());
+        }
         h.onset = -1.0;
       } else if (time - h.onset > kMaxLatency) {
+        static const bool dbg2 = std::getenv("HELIOS_FP_DEBUG") != nullptr;
+        if (dbg2) {
+          std::fprintf(stderr, "ONSET gt=%d t=%.1f MISSED range=%.1f speed=%.2f\n", g.id, h.onset,
+            g.position.norm(), g.velocity.norm());
+        }
         ++s_.onset_missed;
         h.onset = -1.0;
       }
