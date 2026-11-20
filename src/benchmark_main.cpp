@@ -63,6 +63,7 @@ struct Args
   bool no_static_map{false};
   int dump_frame{-1};
   std::string dump_prefix;
+  unsigned seed{7};              // scenario layout / timing (start_stop) and sensor noise
 };
 
 /// Debug dump of one processed frame: points with labels + tracks (CSV, for plotting).
@@ -194,8 +195,9 @@ std::string runSynthetic(const Args & a, const std::string & name, bool & pass)
   PipelineConfig pc = benchConfig(a);
   PerceptionPipeline pipe(pc);
   sim::SimConfig sc;
+  sc.seed = 42U + a.seed;
   sim::LidarSimulator lidar(sc);
-  sim::Scene scene = sim::makeScenario(name);
+  sim::Scene scene = sim::makeScenario(name, a.seed);
   sim::MotEvaluator eval(1.0, 10, pc.risk.horizon_s);
   TimingTable timing;
   Stat ego_err, ego_yaw_err;
@@ -271,7 +273,7 @@ std::string runSynthetic(const Args & a, const std::string & name, bool & pass)
       }
     }
     if (k >= 5) {   // allow the filters to initialise
-      eval.addFrame(gt, out.tracks, out.risks);
+      eval.addFrame(gt, out.tracks, out.risks, scene.time);
       ++ego_states[out.ego.state];
       if (out.ego.valid) {
         ego_err.add((out.ego.velocity - Eigen::Vector2d(scene.ego_speed, 0.0)).norm());
@@ -294,6 +296,7 @@ std::string runSynthetic(const Args & a, const std::string & name, bool & pass)
   os << b << "Timing (synthetic scans, " << pipe.pool().size() + 1 << " threads):\n\n" <<
     timing.markdown() << "\n";
   pass = pass && s.mota > 0.6;
+  std::printf("METRICS scenario=%s seed=%u %s\n", name.c_str(), a.seed, s.toKeyValues().c_str());
   return os.str();
 }
 
@@ -490,8 +493,8 @@ std::string runBag(const Args & a)
 void usage()
 {
   std::cerr <<
-    "usage:\n  helios_benchmark synthetic [--scenario all|crossing|ego_motion|approach] "
-    "[--duration S] [--trace-gt ID]\n  helios_benchmark bag <bag_dir> [--topic T] [--csv file] "
+    "usage:\n  helios_benchmark synthetic [--scenario all|tracking|crossing|ego_motion|approach|"
+    "occlusion|merge_split|wall_walk|start_stop] [--duration S] [--seed N] [--trace-gt ID]\n  helios_benchmark bag <bag_dir> [--topic T] [--csv file] "
     "[--repeat N] [--dump-frame N PREFIX]\n"
     "  common: [--ground czm|ransac_zones] [--ego estimate|assume_stationary|oracle] [--threads N] "
     "[--out report.md]\n          [--static-time S] [--no-static-map]\n";
@@ -561,6 +564,8 @@ int main(int argc, char ** argv)
       a.no_static_map = true;
     } else if (o == "--trace-gt") {
       a.trace_gt = std::stoi(next());
+    } else if (o == "--seed") {
+      a.seed = static_cast<unsigned>(std::stoul(next()));
     } else if (o == "--repeat") {
       a.repeat = std::max(1, std::stoi(next()));
     } else {
@@ -572,9 +577,12 @@ int main(int argc, char ** argv)
     std::string report;
     bool pass = true;
     if (a.mode == "synthetic") {
-      const std::vector<std::string> names = a.scenario == "all" ?
-        std::vector<std::string>{"crossing", "ego_motion", "approach"} :
-        std::vector<std::string>{a.scenario};
+      std::vector<std::string> names{a.scenario};
+      if (a.scenario == "all") {
+        names = {"crossing", "ego_motion", "approach"};
+      } else if (a.scenario == "tracking") {    // v0.3 occlusion / merge / onset scenarios
+        names = {"occlusion", "merge_split", "wall_walk", "start_stop"};
+      }
       report = "## Synthetic Helios-32 scenarios (ground truth)\n\n";
       for (const auto & n : names) {
         report += runSynthetic(a, n, pass);

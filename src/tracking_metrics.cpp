@@ -1,8 +1,11 @@
 #include "helios_obstacle_detection/tracking_metrics.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <limits>
+#include <numeric>
 #include <sstream>
 
 #include "helios_obstacle_detection/hungarian.hpp"
@@ -17,8 +20,11 @@ MotEvaluator::MotEvaluator(double match_threshold, int min_hits, double ttc_hori
 
 void MotEvaluator::addFrame(
   const std::vector<GroundTruth> & gt_all, const std::vector<TrackOutput> & tracks,
-  const std::vector<RiskAssessment> & risks)
+  const std::vector<RiskAssessment> & risks, double time)
 {
+  if (time < 0.0) {
+    time = 0.1 * static_cast<double>(s_.frames);
+  }
   ++s_.frames;
   // evaluated hypotheses: confirmed / coasting tracks
   std::vector<std::size_t> hyp;
@@ -51,10 +57,76 @@ void MotEvaluator::addFrame(
   const std::vector<int> assign = solveAssignment(cost, ng, nh, kInf);
   std::vector<char> hyp_used(nh, 0);
 
+  constexpr double kOnsetStill = 1.0;   // [s] standing before an onset event
+  constexpr double kMinMove = 1.0;      // [s] moving before a stop event
+  constexpr double kMaxLatency = 3.0;   // [s]
   for (std::size_t i = 0; i < ng; ++i) {
     const GroundTruth & g = gt[i];
     const bool visible = g.hits >= min_hits_;
     const int j = assign[i];
+    const TrackOutput * mt = j >= 0 ? &tracks[hyp[static_cast<std::size_t>(j)]] : nullptr;
+    // ---- motion onset / stop events --------------------------------------------------------
+    GtHistory & h = hist_[g.id];
+    if (!h.initialised) {
+      h.initialised = true;
+      h.moving = g.moving;
+      h.ever_moved = g.moving;
+      h.since = time;
+    } else if (g.moving != h.moving) {
+      if (g.moving && time - h.since >= kOnsetStill) {
+        h.onset = time;
+        ++s_.onset_events;
+      }
+      if (g.moving && h.stop >= 0.0) {          // moving again before the stop was seen
+        ++s_.stop_missed;
+        h.stop = -1.0;
+      }
+      if (!g.moving && h.onset >= 0.0) {        // stopped again before MOVING was reported
+        ++s_.onset_missed;
+        h.onset = -1.0;
+      }
+      if (!g.moving && time - h.since >= kMinMove) {
+        h.stop = time;
+        ++s_.stop_events;
+      }
+      h.moving = g.moving;
+      h.ever_moved = h.ever_moved || g.moving;
+      h.since = time;
+    }
+    if (h.onset >= 0.0) {
+      if (mt != nullptr && mt->motion == MotionState::kMoving) {
+        s_.onset_latency_s.push_back(time - h.onset);
+        h.onset = -1.0;
+      } else if (time - h.onset > kMaxLatency) {
+        ++s_.onset_missed;
+        h.onset = -1.0;
+      }
+    }
+    if (h.stop >= 0.0) {
+      if (mt != nullptr && mt->motion != MotionState::kMoving) {
+        s_.stop_latency_s.push_back(time - h.stop);
+        h.stop = -1.0;
+      } else if (time - h.stop > kMaxLatency) {
+        ++s_.stop_missed;
+        h.stop = -1.0;
+      }
+    }
+    // ---- fragmentation -----------------------------------------------------------------------
+    if (visible) {
+      if (j >= 0) {
+        if (h.interrupted) {
+          ++s_.fragmentations;
+          h.interrupted = false;
+        }
+        h.tracked_once = true;
+      } else if (h.tracked_once) {
+        h.interrupted = true;
+      }
+    }
+    if (visible && mt != nullptr && !h.ever_moved) {
+      ++s_.never_moved_frames;
+      s_.never_moved_as_moving += mt->motion == MotionState::kMoving;
+    }
     if (j < 0) {
       if (visible) {
         ++s_.gt_visible;
@@ -77,6 +149,7 @@ void MotEvaluator::addFrame(
       ++s_.idsw_by_gt[g.id];
     }
     last_match_[g.id] = t.id;
+    ++co_[{g.id, t.id}];
     motp_sum_ += (g.position - Eigen::Vector2d(t.center.x(), t.center.y())).norm();
 
     if (t.velocity_reliable) {
@@ -132,12 +205,19 @@ void MotEvaluator::addFrame(
     }
     const auto & t = tracks[hyp[j]];
     const Eigen::Vector2d p(t.center.x(), t.center.y());
-    bool ignore = false;
+    // walls / buildings (footprint > large_structure_size) are never ground-truth objects
+    bool ignore = t.large_structure;
     for (const auto & g : dont_care) {
-      ignore = ignore || inside(g, p, 1.0);
+      ignore = ignore || inside(g, p, 1.5);
     }
     if (!ignore) {
       ++s_.fp;
+      static const bool dbg = std::getenv("HELIOS_FP_DEBUG") != nullptr;
+      if (dbg) {
+        std::fprintf(stderr, "FP t=%.1f id=%u state=%s motion=%s c=(%.2f,%.2f) size=(%.2f,%.2f) pts=%u upd=%d\n",
+          time, t.id, toString(t.state), toString(t.motion), t.center.x(), t.center.y(),
+          t.size.x(), t.size.y(), t.point_count, t.updated ? 1 : 0);
+      }
     }
   }
 }
@@ -150,6 +230,39 @@ MotSummary MotEvaluator::summary() const
   s.motp_m = s.tp ? motp_sum_ / static_cast<double>(s.tp) : 0.0;
   s.precision = (s.tp + s.fp) ? static_cast<double>(s.tp) / static_cast<double>(s.tp + s.fp) : 0;
   s.recall = static_cast<double>(s.tp) / gt;
+  // IDF1: optimal one-to-one GT id <-> track id assignment maximising co-occurring TP frames
+  {
+    std::vector<int> gids;
+    std::vector<std::uint32_t> tids;
+    for (const auto & kv : co_) {
+      if (std::find(gids.begin(), gids.end(), kv.first.first) == gids.end()) {
+        gids.push_back(kv.first.first);
+      }
+      if (std::find(tids.begin(), tids.end(), kv.first.second) == tids.end()) {
+        tids.push_back(kv.first.second);
+      }
+    }
+    constexpr double kInf = 1e12;
+    std::vector<double> cost(gids.size() * tids.size(), kInf);
+    for (const auto & kv : co_) {
+      const auto gi = static_cast<std::size_t>(
+        std::find(gids.begin(), gids.end(), kv.first.first) - gids.begin());
+      const auto ti = static_cast<std::size_t>(
+        std::find(tids.begin(), tids.end(), kv.first.second) - tids.begin());
+      cost[gi * tids.size() + ti] = -static_cast<double>(kv.second);
+    }
+    const auto a = solveAssignment(cost, gids.size(), tids.size(), kInf);
+    s.idtp = 0;
+    for (std::size_t gi = 0; gi < gids.size(); ++gi) {
+      if (a[gi] >= 0) {
+        s.idtp += co_.at({gids[gi], tids[static_cast<std::size_t>(a[gi])]});
+      }
+    }
+    const double denom = static_cast<double>(s.gt_visible + s.tp + s.fp);
+    s.idf1 = denom > 0.0 ? 2.0 * static_cast<double>(s.idtp) / denom : 0.0;
+  }
+  s.false_moving_rate = s.never_moved_frames ?
+    static_cast<double>(s.never_moved_as_moving) / static_cast<double>(s.never_moved_frames) : 0.0;
   if (s.velocity_samples) {
     s.velocity_rmse = std::sqrt(vel_sq_sum_ / static_cast<double>(s.velocity_samples));
     s.speed_mae = speed_abs_sum_ / static_cast<double>(s.velocity_samples);
@@ -163,6 +276,39 @@ MotSummary MotEvaluator::summary() const
       static_cast<double>(ttc_violations_) / static_cast<double>(s.ttc_samples);
   }
   return s;
+}
+
+double MotSummary::median(std::vector<double> v)
+{
+  if (v.empty()) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  std::sort(v.begin(), v.end());
+  return v[v.size() / 2];
+}
+
+std::string MotSummary::toKeyValues() const
+{
+  char b[640];
+  std::snprintf(b, sizeof(b),
+    "frames=%lu gt=%lu tp=%lu fp=%lu fn=%lu idsw=%lu frag=%lu mota=%.4f idf1=%.4f "
+    "precision=%.4f recall=%.4f heading_mae=%.2f never_moved_frames=%lu never_moved_as_moving=%lu "
+    "onsets=%lu onset_detected=%zu onset_missed=%lu onset_median_ms=%.0f onset_mean_ms=%.0f "
+    "stops=%lu stop_median_ms=%.0f mov_as_mov=%lu mov_as_static=%lu mov_as_unknown=%lu",
+    static_cast<unsigned long>(frames), static_cast<unsigned long>(gt_visible),
+    static_cast<unsigned long>(tp), static_cast<unsigned long>(fp), static_cast<unsigned long>(fn),
+    static_cast<unsigned long>(idsw), static_cast<unsigned long>(fragmentations), mota, idf1,
+    precision, recall, heading_mae_deg, static_cast<unsigned long>(never_moved_frames),
+    static_cast<unsigned long>(never_moved_as_moving), static_cast<unsigned long>(onset_events),
+    onset_latency_s.size(), static_cast<unsigned long>(onset_missed),
+    1000.0 * median(onset_latency_s),
+    onset_latency_s.empty() ? std::numeric_limits<double>::quiet_NaN() :
+    1000.0 * std::accumulate(onset_latency_s.begin(), onset_latency_s.end(), 0.0) /
+    static_cast<double>(onset_latency_s.size()),
+    static_cast<unsigned long>(stop_events), 1000.0 * median(stop_latency_s),
+    static_cast<unsigned long>(moving_as_moving), static_cast<unsigned long>(moving_as_static),
+    static_cast<unsigned long>(moving_as_unknown));
+  return b;
 }
 
 std::string MotSummary::toMarkdown(const std::string & title) const
@@ -204,6 +350,20 @@ std::string MotSummary::toMarkdown(const std::string & title) const
       }
       os << " |\n";
     };
+  std::snprintf(b, sizeof(b),
+    "| IDF1 / fragmentations | %.3f / %lu |\n"
+    "| never-moved objects shown MOVING | %lu / %lu frames (%.2f %%) |\n"
+    "| motion onsets detected / missed (of) | %zu / %lu (%lu) |\n"
+    "| onset latency median / mean | %.0f / %.0f ms |\n"
+    "| stops: latency median (events) | %.0f ms (%lu) |\n",
+    idf1, static_cast<unsigned long>(fragmentations),
+    static_cast<unsigned long>(never_moved_as_moving), static_cast<unsigned long>(never_moved_frames),
+    100.0 * false_moving_rate, onset_latency_s.size(), static_cast<unsigned long>(onset_missed),
+    static_cast<unsigned long>(onset_events), 1000.0 * median(onset_latency_s),
+    onset_latency_s.empty() ? 0.0 : 1000.0 * std::accumulate(onset_latency_s.begin(),
+    onset_latency_s.end(), 0.0) / static_cast<double>(onset_latency_s.size()),
+    1000.0 * median(stop_latency_s), static_cast<unsigned long>(stop_events));
+  os << b;
   dump("static GT shown MOVING", static_as_moving_by_gt);
   dump("moving GT shown STATIC", moving_as_static_by_gt);
   dump("ID switches", idsw_by_gt);

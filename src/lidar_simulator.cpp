@@ -73,6 +73,11 @@ void Scene::step(double dt)
 {
   time += dt;
   for (auto & b : boxes) {
+    for (const auto & ev : b.schedule) {
+      if (ev.first <= time + 1e-9 && ev.first > time - dt + 1e-9) {
+        b.velocity = ev.second;
+      }
+    }
     if (std::fabs(b.yaw_rate) > 1e-9) {
       b.velocity = rot(b.yaw_rate * dt) * b.velocity;
       b.yaw += b.yaw_rate * dt;
@@ -265,6 +270,95 @@ Scene makeScenario(const std::string & name, unsigned seed)
     box(3, 20.0, 4.0, 0.6, 0.6, 1.7, 0.0, 0.9, 0.0);                 // pedestrian along road
     box(90, 20.0, 18.0, 60.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);       // building walls
     box(91, 20.0, -18.0, 60.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);
+  } else if (name == "occlusion") {
+    // Indoor-like hall (walls give the LiDAR-only ego-motion estimate structure to register).
+    // Walkers reverse at t = 10 s, so every occlusion happens twice.
+    box(90, 9.0, 11.0, 34.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);
+    box(91, 9.0, -11.0, 34.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);
+    box(92, -9.0, 0.0, 0.3, 22.0, 3.0, 0.0, 0.0, 0.0, false);
+    // static occluders (evaluated: must never be MOVING)
+    box(10, 4.0, 1.5, 0.6, 0.6, 2.0, 0.0, 0.0, 0.0);                 // pillar:  ~1.0 s hidden
+    box(11, 5.0, -2.5, 1.0, 0.8, 1.5, 0.0, 0.0, 0.0);                // crate:   ~1.6 s hidden
+    box(12, -3.0, 2.0, 1.2, 0.8, 1.2, 0.0, 0.0, 0.0);                // cabinet: ~2.3 s hidden
+    auto back_and_forth = [&s](double vx, double vy) {
+        s.boxes.back().schedule = {{10.0, Eigen::Vector2d(-vx, -vy)}};
+      };
+    box(1, 8.0, 6.0, 0.5, 0.5, 1.7, 0.0, 0.0, -1.2);                 // behind the pillar
+    back_and_forth(0.0, -1.2);
+    box(2, 8.0, -7.0, 0.5, 0.5, 1.7, 0.0, 0.0, 1.0);                 // behind the crate
+    back_and_forth(0.0, 1.0);
+    box(3, -5.5, -4.0, 0.5, 0.5, 1.7, 0.0, 0.0, 1.1);                // behind the cabinet
+    back_and_forth(0.0, 1.1);
+    // dynamic occluder: pedestrian 4 (3 m) passes in front of pedestrian 5 (6.5 m) at ~7 s
+    box(4, 3.0, -7.0, 0.5, 0.5, 1.7, 0.0, 0.0, 1.0);
+    back_and_forth(0.0, 1.0);
+    box(5, 6.5, 7.0, 0.5, 0.5, 1.7, 0.0, 0.0, -0.9);
+    back_and_forth(0.0, -0.9);
+  } else if (name == "merge_split") {
+    box(90, 9.0, 11.0, 34.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);
+    box(91, 9.0, -11.0, 34.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);
+    box(92, -6.0, 0.0, 0.3, 22.0, 3.0, 0.0, 0.0, 0.0, false);
+    // head-on passing, 0.6 m between centres (0.1 m gap: one cluster while passing), twice
+    box(1, 6.0, -6.0, 0.5, 0.5, 1.7, 0.0, 0.0, 1.1);
+    s.boxes.back().schedule = {{11.0, Eigen::Vector2d(0.0, -1.1)}};
+    box(2, 6.6, 6.0, 0.5, 0.5, 1.7, 0.0, 0.0, -1.1);
+    s.boxes.back().schedule = {{11.0, Eigen::Vector2d(0.0, 1.1)}};
+    // side by side (0.7 m between centres) for 6 s, then parting; both stop at 14 s
+    box(3, 11.0, -7.0, 0.5, 0.5, 1.7, 0.0, 0.0, 1.0);
+    s.boxes.back().schedule = {{14.0, Eigen::Vector2d::Zero()}};
+    box(4, 11.7, -7.0, 0.5, 0.5, 1.7, 0.0, 0.0, 1.0);
+    s.boxes.back().schedule = {{6.0, Eigen::Vector2d(0.8, 0.6)}, {9.0, Eigen::Vector2d(0.0, 1.0)},
+      {14.0, Eigen::Vector2d::Zero()}};
+    // overtaking at a 0.65 m lateral offset (6 catches 5 at ~5 s), both stop at 8 s
+    box(5, 2.0, 3.0, 0.5, 0.5, 1.7, 0.0, -0.6, 0.0);
+    s.boxes.back().schedule = {{8.0, Eigen::Vector2d::Zero()}};
+    box(6, 6.0, 3.65, 0.5, 0.5, 1.7, 0.0, -1.4, 0.0);
+    s.boxes.back().schedule = {{8.0, Eigen::Vector2d::Zero()}};
+    box(10, 4.0, -1.0, 0.6, 0.6, 2.0, 0.0, 0.0, 0.0);                // static pillar
+  } else if (name == "wall_walk") {
+    // The static background needs static_time_s (10 s) to learn the walls: walkers reach the
+    // walls after 11 s and never stand still for 10 s (they would become background by design).
+    box(90, 9.0, -3.0, 22.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);        // wall along the path
+    box(91, 9.0, 9.0, 30.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);
+    box(92, -6.0, 3.0, 0.3, 12.0, 3.0, 0.0, 0.0, 0.0, false);
+    box(93, 14.0, 4.0, 0.3, 6.0, 3.0, 0.0, 0.0, 0.0, false);         // cross wall
+    box(10, 5.0, 3.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0);                 // static crate
+    // walks to the wall, then along it 0.1 m from its face, stops 3 s, walks back
+    box(1, -1.0, 2.0, 0.5, 0.5, 1.7, 0.0, 0.0, 0.0);
+    s.boxes.back().schedule = {{8.0, Eigen::Vector2d(0.0, -1.0)},
+      {12.5, Eigen::Vector2d(1.0, 0.0)}, {21.5, Eigen::Vector2d::Zero()},
+      {24.5, Eigen::Vector2d(-0.8, 0.0)}};
+    // along the cross wall at 0.15 m
+    box(2, 13.45, -1.5, 0.5, 0.5, 1.7, 0.0, 0.0, 0.0);
+    s.boxes.back().schedule = {{9.0, Eigen::Vector2d(0.0, 1.0)}, {16.0, Eigen::Vector2d(0.0, -1.0)},
+      {23.0, Eigen::Vector2d::Zero()}};
+  } else if (name == "start_stop") {
+    box(90, 9.0, 12.0, 34.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);
+    box(91, 9.0, -12.0, 34.0, 0.3, 3.0, 0.0, 0.0, 0.0, false);
+    box(92, -8.0, 0.0, 0.3, 24.0, 3.0, 0.0, 0.0, 0.0, false);
+    box(93, 26.0, 0.0, 0.3, 24.0, 3.0, 0.0, 0.0, 0.0, false);
+    box(10, 6.0, 4.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0);                 // static references
+    box(11, 9.0, -5.0, 0.6, 0.6, 1.8, 0.0, 0.0, 0.0);
+    // pedestrians: stand >= 2.5 s, walk 1.0 .. 3.0 s, stop; radial, lateral and diagonal walks
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> jitter(-0.4, 0.4);
+    struct P {double x, y, vx, vy;};
+    const P ps[6] = {{3.0, -1.5, 0.0, 0.9}, {5.0, 2.5, 0.7, 0.0}, {7.5, -2.0, 0.6, 0.6},
+      {10.0, 3.0, 0.0, -1.2}, {13.0, -3.0, -1.0, 0.0}, {16.0, 1.0, 0.5, -0.9}};
+    const double walk_s[4] = {2.5, 1.0, 3.0, 1.5};
+    for (int i = 0; i < 6; ++i) {
+      box(1 + i, ps[i].x, ps[i].y, 0.5, 0.5, 1.7, 0.0, 0.0, 0.0);
+      double t = 3.0 + 0.5 * i + jitter(rng);
+      double sign = 1.0;
+      for (int k = 0; k < 4; ++k) {
+        const Eigen::Vector2d v = sign * Eigen::Vector2d(ps[i].vx, ps[i].vy);
+        s.boxes.back().schedule.emplace_back(t, v);
+        t += walk_s[(k + i) % 4];
+        s.boxes.back().schedule.emplace_back(t, Eigen::Vector2d::Zero());
+        t += 3.0 + jitter(rng);
+        sign = -sign;   // walk back and forth around the start position
+      }
+    }
   } else {
     throw std::invalid_argument("unknown scenario '" + name + "'");
   }

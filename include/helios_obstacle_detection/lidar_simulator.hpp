@@ -33,6 +33,9 @@ struct SimBox
   Eigen::Vector2d velocity{Eigen::Vector2d::Zero()};  // world
   double yaw_rate{0.0};
   bool evaluate{true};    // false: walls / clutter (not part of the MOT ground truth)
+  // Optional velocity schedule (scene time [s], world velocity): from each time on the box moves
+  // with that velocity (start / stop / turn manoeuvres). Empty -> constant `velocity`.
+  std::vector<std::pair<double, Eigen::Vector2d>> schedule;
   bool moving() const {return velocity.norm() > 0.05;}
 };
 
@@ -99,7 +102,12 @@ private:
 
 /// Named scenarios: "crossing" (static sensor, pedestrians + vehicles + static boxes),
 /// "ego_motion" (sensor driving 3 m/s with a slight turn through static clutter + movers),
-/// "approach" (static sensor, one object driving straight at it - TTC check).
+/// "approach" (static sensor, one object driving straight at it - TTC check),
+/// "occlusion" (pedestrians passing behind static / moving occluders for 0.5 .. 2.5 s),
+/// "merge_split" (pedestrians passing each other closely, walking side by side and parting),
+/// "wall_walk" (pedestrians walking along a wall at 0.1 .. 0.2 m, stopping, turning back),
+/// "start_stop" (pedestrians at 3 .. 16 m standing, walking 1 .. 3 s, stopping: motion onset).
+/// `seed` varies the clutter / timing where a scenario has random elements.
 Scene makeScenario(const std::string & name, unsigned seed = 7);
 
 }  // namespace sim
