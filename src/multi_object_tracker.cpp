@@ -16,6 +16,7 @@ namespace helios_obstacle_detection
 namespace
 {
 constexpr double kInfeasible = 1e12;
+constexpr double kMaxPartialInterval = 1.0;   // [m] widest centre interval of a partial view
 
 double wrapHalfPi(double a)
 {
@@ -413,7 +414,7 @@ MultiObjectTracker::Measurement MultiObjectTracker::measure(
   raw.z = z_raw;
   raw.R = R_raw;
   raw.max_sigma = std::sqrt(std::max(R_raw(0, 0), R_raw(1, 1)));
-  if (!config_.partial_view_model || t.hits < 3 || t.large_structure || d.large_structure) {
+  if (t.hits < 3 || t.large_structure || d.large_structure) {
     return raw;
   }
   // detection box corners projected on the track's box axes (relative to the predicted centre)
@@ -428,11 +429,22 @@ MultiObjectTracker::Measurement MultiObjectTracker::measure(
   if (2.0 * ea >= t.size.x() - tol && 2.0 * eb >= t.size.y() - tol) {
     return raw;   // fully visible (or larger: merge / growth -> shape logic)
   }
+  raw.shrunk = true;
+  // Partial-view model only for moving objects (their occlusion matters; static objects are
+  // tracked against the background anyway) and only while the track box is plausible for the
+  // visible part: a much larger box (e.g. adopted during a merge) leaves the centre free.
+  if (!config_.partial_view_model || !isDynamic(t) ||
+    t.size.x() - 2.0 * ea > kMaxPartialInterval || t.size.y() - 2.0 * eb > kMaxPartialInterval)
+  {
+    return raw;
+  }
   // noise of a fully visible centre without the extent term (handled by the interval)
   Eigen::Matrix2d R_extra = R_raw;
   const double ext = config_.meas_sigma_extent_factor * std::max(d.obb.size.x(), d.obb.size.y());
   R_extra -= ext * ext * Eigen::Matrix2d::Identity();
-  return partialView(t, rel.x() - ea, rel.x() + ea, rel.y() - eb, rel.y() + eb, R_extra);
+  Measurement m = partialView(t, rel.x() - ea, rel.x() + ea, rel.y() - eb, rel.y() + eb, R_extra);
+  m.shrunk = true;
+  return m;
 }
 
 double MultiObjectTracker::sizeCost(
@@ -899,7 +911,7 @@ void MultiObjectTracker::update(
       const bool was_lost = t.state == TrackState::kLost;
       double shape_sigma = from_split[i] ? 0.0 : shapeInconsistency(t, d, meas_yaw);
       // a box that shrank behind a nearer object is a partial view, not a new shape
-      const bool occluded_view = m.partial &&
+      const bool occluded_view = (m.partial || m.shrunk) &&
         occludedFraction(rot_t * (t.kf.position() - trans), t.size, t.yaw - ego.pose[2]) >= 0.2;
       if (from_split[i] || occluded_view) {
         // keep the streak: neither confirms nor refutes the current shape
@@ -934,7 +946,9 @@ void MultiObjectTracker::update(
         (!m.partial || (m.max_sigma < 0.15 && ego.state == EgoState::kStationary));
       const double w_bad = ego.state == EgoState::kStationary ?
         config_.inconsistent_sample_weight : 0.0;
-      if (consistent || w_bad > 0.0) {
+      // a raw centre of a box shrunk behind an occluder is biased: no motion evidence
+      const bool biased = occluded_view && !m.partial;
+      if (consistent || (w_bad > 0.0 && !biased)) {
         t.motion_samples.push_back({stamp, m.partial ? m.z : z[ju], consistent ? 1.0 : w_bad});
       }
       if (cloud != nullptr && !from_split[i]) {

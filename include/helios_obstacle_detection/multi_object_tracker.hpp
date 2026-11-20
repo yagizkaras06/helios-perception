@@ -279,6 +279,7 @@ private:
     Eigen::Vector2d z{Eigen::Vector2d::Zero()};
     Eigen::Matrix2d R{Eigen::Matrix2d::Identity()};
     bool partial{false};                // centre constrained by the partial-view model
+    bool shrunk{false};                 // detection smaller than the track box (partial view)
     double max_sigma{0.0};
   };
   /// Points of a cluster (odom frame, 2D) handed to a track by the merge split.
