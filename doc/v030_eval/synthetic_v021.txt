@@ -1,0 +1,8 @@
+scenario     runs     GT    FN    FP  IDSW  frag   MOTA   IDF1 recall   prec mov->MOV  falseMOV      onsets  onset med/mean ms stop med   hdg
+occlusion       5   9027    96   100    54    42  0.972  0.728  0.989  0.989    95.1%     0.24%    0/0  (0m)      nan/nan           nan   5.3
+merge_split     5   8150   203   313    29    10  0.933  0.874  0.975  0.962    93.2%     0.00%    0/0  (0m)      nan/nan           400   6.0
+wall_walk       5   3675     0    35     0     0  0.990  0.995  1.000  0.991    94.0%     0.00%   12/15 (0m)      400/400           300   5.1
+start_stop      5  11210    46  1601    27    12  0.851  0.763  0.996  0.875    76.0%     0.40%  111/120(9m)      400/491           400   3.9
+crossing        5   7382   449   301    31    38  0.894  0.730  0.939  0.958    98.9%     0.27%    0/0  (0m)      nan/nan           nan   2.7
+ego_motion      5  18022  3188   811   191   144  0.768  0.654  0.823  0.948    80.6%     0.06%    0/0  (0m)      nan/nan           nan   2.5
+approach        5   3650     0    35     0     0  0.990  0.995  1.000  0.991    99.3%     0.00%    0/0  (0m)      nan/nan           nan   0.3

@@ -1,0 +1,7 @@
+clean observed GT frames 432 (+143 absorbed into static background) in 16 sub-trajectories | recall 100.0 % (updated 98.1 %) | interp frames covered 41/41
+near zone (< 1.0 m, desk): 225 frames, recall 49.8 % (reported separately)
+ID switches 4 | fragmentations 0 | IDF1 0.976
+walking frames 158: MOVING 77.2 % | still frames 60: false MOVING 0.00 % | static-scene track frames 15315: false MOVING 0.12 %
+heading error median 10.4 deg, p90 31.8 deg (122)
+motion onsets 3: detected 2, latency median 700 ms, mean 500 ms  [None, 700, 300]
+walking segments (GT > 0.4 m/s for >= 1 s, not MOVING at start): 1, reached MOVING 1, latency median 500 ms, mean 500 ms  [500]
