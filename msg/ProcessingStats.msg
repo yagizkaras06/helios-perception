@@ -67,7 +67,14 @@ uint32 tracks_total
 uint32 tracks_confirmed
 uint32 tracks_moving
 uint32 tracks_static
+uint32 tracks_occluded            # predicted (not observed in this scan)
+uint32 tracks_lost                # kept for re-identification, not published
 uint64 tracks_created_total
+uint64 tracks_reidentified_total  # LOST tracks recovered with their id
+uint64 merge_splits_total         # merged clusters split between tracks
+float32 tracker_predict_ms        # last frame: Kalman prediction
+float32 tracker_association_ms    # gated Hungarian association
+float32 tracker_occlusion_ms      # occlusion test, merge split, re-identification
 uint64 tracker_resets
 float32 tracker_mean_nis          # filter consistency, ~2 expected
 uint8 max_risk_level

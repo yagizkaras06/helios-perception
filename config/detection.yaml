@@ -149,7 +149,21 @@
       max_gate_distance: 3.0         # [m]
       confirm_hits: 3
       tentative_max_misses: 2
-      max_coast_time_s: 0.8
+      max_coast_time_s: 0.8          # [s] unexplained disappearance (free line of sight) -> LOST
+      occluded_max_time_s: 2.5       # [s] explained occlusion of a dynamic track -> LOST
+      lost_max_time_s: 2.0           # [s] LOST tracks kept (not published) for re-identification
+      occlusion_bin_deg: 1.0         # azimuth bins of the "something in front" test
+      occlusion_margin: 0.3          # [m] an occluder must be this much nearer than the object
+      reid_max_distance: 3.0         # [m] re-identification gate (grows with reid_speed * gap)
+      reid_speed: 1.0                # [m/s]
+      size_cost_weight: 1.0          # association: log size mismatch / ln 1.5, squared
+      iou_cost_weight: 1.0           # association: 1 - BEV IoU (predicted box vs. detection)
+      background_cost: 4.0           # association: moving track <-> static-background cluster
+      max_velocity_sigma: 0.6        # [m/s] speed sigma above -> velocity UNRELIABLE (no TTC)
+      partial_view_model: true       # shrunken boxes of movers constrain the centre to an interval
+      merge_split: true              # split clusters holding several established tracks
+      merge_max_tracks: 3            # bounded hypotheses per merged cluster
+      merge_max_time_s: 4.0          # [s] longer merges are no longer split
       max_position_sigma: 2.0        # [m]
       max_tracks: 256
       max_dt: 1.0                    # [s] larger gaps / time jumps reset the tracker
@@ -169,6 +183,12 @@
       point_evidence_override_speed: 1.5   # [m/s]
       snapshot_points: 48
       motion_hysteresis_frames: 2
+      motion_evidence_timeout_s: 2.0 # [s] MOVING without any motion evidence -> UNKNOWN
+      # change-point onset test (earlier MOVING after standing); thresholds above unchanged
+      onset_detection: true
+      onset_sigma_factor: 5.0        # stricter than motion_sigma_factor (onset time is searched)
+      onset_min_displacement: 0.20   # [m] since the fitted onset
+      onset_min_samples: 3
       history_length: 30             # trail samples
 
     # ---------------------------------------------------------------- static background map
@@ -183,6 +203,7 @@
       min_occupancy: 0.5             # share of frames the voxel was occupied since first seen
       forget_time_s: 5.0             # [s] voxels unseen this long are dropped (object left)
       neighbor_tolerance: true       # 26-neighbourhood (noise at surface edges)
+      track_guided: true             # objects that moved within static_time_s are not absorbed
 
     # ---------------------------------------------------------------- TTC / risk (no control!)
     risk:

@@ -231,16 +231,36 @@ MarkerArray buildTrackMarkers(
     }
     const RiskAssessment & r = frame.risks[i];
     const bool tentative = t.state == TrackState::kTentative;
+    // box colour = motion state (MOVING red, UNKNOWN yellow, STATIC grey-blue); risk is shown by
+    // the line width and the label. Predicted (OCCLUDED) boxes are dashed and translucent.
+    const Rgb motion_col = t.motion == MotionState::kMoving ? Rgb{1.F, 0.15F, 0.1F} :
+      (t.motion == MotionState::kUnknown ? Rgb{1.F, 0.85F, 0.1F} : Rgb{0.5F, 0.6F, 0.9F});
     const Rgb col = tentative ? Rgb{0.6F, 0.6F, 0.6F} : colorForRisk(r.level);
-    const float alpha = t.state == TrackState::kConfirmed ? 1.0F : 0.5F;
+    const float alpha = t.predicted ? 0.4F : (t.state == TrackState::kConfirmed ? 1.0F : 0.5F);
     const auto id = static_cast<std::int32_t>(t.id & 0x7fffffff);
     const float z_bottom = t.center.z() - 0.5F * t.size.z();
     const float z_top = t.center.z() + 0.5F * t.size.z();
 
     Marker box = makeMarker(header, "track_boxes", id, Marker::LINE_LIST, lifetime);
     box.scale.x = r.level >= RiskLevel::kHigh ? 0.07 : 0.04;
-    setColor(box, col, alpha);
+    setColor(box, tentative ? col : motion_col, alpha);
     addOrientedBoxEdges(box, t.center, t.size, t.yaw);
+    if (t.predicted) {
+      // dashed edges: keep the 1st and 3rd quarter of every segment
+      std::vector<geometry_msgs::msg::Point> dashed;
+      for (std::size_t k = 0; k + 1 < box.points.size(); k += 2) {
+        const auto & a = box.points[k];
+        const auto & b = box.points[k + 1];
+        for (int q = 0; q < 4; q += 2) {
+          const double f0 = q / 4.0, f1 = (q + 1) / 4.0;
+          dashed.push_back(toPoint(static_cast<float>(a.x + f0 * (b.x - a.x)),
+            static_cast<float>(a.y + f0 * (b.y - a.y)), static_cast<float>(a.z + f0 * (b.z - a.z))));
+          dashed.push_back(toPoint(static_cast<float>(a.x + f1 * (b.x - a.x)),
+            static_cast<float>(a.y + f1 * (b.y - a.y)), static_cast<float>(a.z + f1 * (b.z - a.z))));
+        }
+      }
+      box.points = std::move(dashed);
+    }
     arr.markers.push_back(std::move(box));
 
     // label (ASCII only; RViz font lacks Turkish glyphs; keep lines short)
@@ -248,10 +268,16 @@ MarkerArray buildTrackMarkers(
     text.pose.position = toPoint(t.center.x(), t.center.y(), z_top + 0.6F);
     text.scale.z = 0.22;
     setColor(text, Rgb{1.F, 1.F, 1.F}, 1.F);
-    char line1[64], line2[64], line3[64];
-    std::snprintf(line1, sizeof(line1), "ID%u %s%s%s", t.id, motionTag(t.motion),
-      t.large_structure ? " L" : "", t.predicted ? " (pred)" : "");
-    if (t.velocity_reliable) {
+    char line1[96], line2[64], line3[64];
+    std::snprintf(line1, sizeof(line1), "ID%u %s %s c%.2f%s%s", t.id, motionTag(t.motion),
+      toString(t.state), t.confidence, t.large_structure ? " L" : "",
+      t.predicted ? " PRED" : (t.merged ? " MERGED" : ""));
+    if (t.velocity_status == VelocityStatus::kUnreliable && !tentative) {
+      // estimate exists but is not trusted: shown with "?" and its uncertainty, no TTC
+      std::snprintf(line2, sizeof(line2), "v? %.1f+-%.1fm/s", t.speed, t.speed_sigma);
+    } else if (t.relative_only) {
+      std::snprintf(line2, sizeof(line2), "v:relative only");
+    } else if (t.velocity_reliable) {
       if (t.heading_valid) {
         std::snprintf(line2, sizeof(line2), "%.1f+-%.1fm/s %.0fdeg", t.speed, t.speed_sigma,
           t.heading * 180.F / static_cast<float>(M_PI));

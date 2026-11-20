@@ -127,7 +127,7 @@ if(BUILD_TESTING)
   find_package(launch_testing_ament_cmake REQUIRED)
 
   foreach(t test_pipeline test_tracking test_ego_motion test_ground_czm test_risk_health
-      test_static_map test_system)
+      test_static_map test_system test_tracking_v03)
     ament_add_gtest(${t} test/${t}.cpp TIMEOUT 300)
     if(TARGET ${t})
       target_link_libraries(${t} helios_sim)

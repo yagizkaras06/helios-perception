@@ -6,9 +6,24 @@
 # when velocity_reliable is true (track confirmed and old enough, not a large structure, and the
 # parent array reports a usable ego-motion state). No semantic class is implied.
 
+# Lifecycle (v0.3): TENTATIVE -> CONFIRMED <-> OCCLUDED -> LOST -> deleted. OCCLUDED tracks are
+# PREDICTIONS (predicted = true, covariance grows); LOST tracks are kept internally for
+# re-identification only and are not published. Lifecycle and motion state are independent.
 uint8 TRACK_TENTATIVE = 0     # not yet confirmed (may be clutter)
 uint8 TRACK_CONFIRMED = 1
-uint8 TRACK_COASTING  = 2     # confirmed but not observed in this scan (predicted)
+uint8 TRACK_OCCLUDED  = 2     # confirmed but not observed in this scan (predicted)
+uint8 TRACK_COASTING  = 2     # v0.2 name of TRACK_OCCLUDED
+uint8 TRACK_LOST      = 3     # not published
+
+uint8 OCCLUSION_NONE         = 0  # observed in this scan
+uint8 OCCLUSION_OCCLUDER     = 1  # something nearer covers the predicted azimuth span
+uint8 OCCLUSION_MERGED       = 2  # predicted box inside another object's cluster
+uint8 OCCLUSION_OUT_OF_RANGE = 3
+uint8 OCCLUSION_UNEXPLAINED  = 4  # line of sight looks free (kept only briefly)
+
+uint8 VELOCITY_UNKNOWN    = 0     # no ground reference (ego motion unknown) or no estimate yet
+uint8 VELOCITY_UNRELIABLE = 1     # predicted / merged / too uncertain / ego motion unreliable
+uint8 VELOCITY_RELIABLE   = 2
 
 # With the static background map (default): STATIC = part of the background, i.e. stayed still
 # for >= static_map.static_time_s (10 s); UNKNOWN = dynamic object that is not moving right now
@@ -26,8 +41,16 @@ uint8 RISK_CRITICAL = 4
 uint32 id                     # persistent track id
 uint8 track_state
 uint8 motion_state
+uint8 occlusion_reason
+uint8 velocity_status
+bool predicted                # no measurement in this scan: position / box are predictions
+bool merged                   # measured from a cluster shared with other tracks (split)
+bool relative_motion_only     # ego motion unknown: only motion relative to the sensor observable
+float32 track_confidence      # existence confidence [0,1] (heuristic, not a probability)
+float32 motion_confidence     # strength of the motion-state evidence [0,1] (heuristic)
+float32 time_since_moving_s   # since the last MOVING classification, +inf if never
 bool ever_moved               # was MOVING at some point (e.g. pedestrian that stopped)
-bool velocity_reliable
+bool velocity_reliable        # == (velocity_status == VELOCITY_RELIABLE)
 bool large_structure          # wall / building-like; box centre and velocity unreliable
 bool in_static_background     # last detection belonged to the static background map
 float32 age_s

@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>helios_obstacle_detection</name>
-  <version>0.2.0</version>
+  <version>0.3.0</version>
   <description>
     Perception-only LiDAR stack for the RoboSense Helios 32 (LiDAR data only, no camera / GPS /
     IMU): ROI + load-adaptive voxel filtering, concentric-zone (Patchwork++-style) ground

@@ -354,6 +354,25 @@ private:
     tc.confirm_hits = i("tracking.confirm_hits", 3);
     tc.tentative_max_misses = i("tracking.tentative_max_misses", 2);
     tc.max_coast_time_s = f("tracking.max_coast_time_s", 0.8);
+    tc.occluded_max_time_s = f("tracking.occluded_max_time_s", 2.5);
+    tc.lost_max_time_s = f("tracking.lost_max_time_s", 2.0);
+    tc.occlusion_bin_deg = f("tracking.occlusion_bin_deg", 1.0);
+    tc.occlusion_margin = f("tracking.occlusion_margin", 0.3);
+    tc.reid_max_distance = f("tracking.reid_max_distance", 3.0);
+    tc.reid_speed = f("tracking.reid_speed", 1.0);
+    tc.size_cost_weight = f("tracking.size_cost_weight", 1.0);
+    tc.iou_cost_weight = f("tracking.iou_cost_weight", 1.0);
+    tc.background_cost = f("tracking.background_cost", 4.0);
+    tc.max_velocity_sigma = f("tracking.max_velocity_sigma", 0.6);
+    tc.partial_view_model = b("tracking.partial_view_model", true);
+    tc.merge_split = b("tracking.merge_split", true);
+    tc.merge_max_tracks = i("tracking.merge_max_tracks", 3);
+    tc.merge_max_time_s = f("tracking.merge_max_time_s", 4.0);
+    tc.motion_evidence_timeout_s = f("tracking.motion_evidence_timeout_s", 2.0);
+    tc.onset_detection = b("tracking.onset_detection", true);
+    tc.onset_sigma_factor = f("tracking.onset_sigma_factor", 5.0);
+    tc.onset_min_displacement = f("tracking.onset_min_displacement", 0.20);
+    tc.onset_min_samples = i("tracking.onset_min_samples", 3);
     tc.max_position_sigma = f("tracking.max_position_sigma", 2.0);
     tc.max_tracks = i("tracking.max_tracks", 256);
     tc.max_dt = f("tracking.max_dt", 1.0);
@@ -381,6 +400,7 @@ private:
     pc.static_map.min_occupancy = f("static_map.min_occupancy", 0.5);
     pc.static_map.forget_time_s = f("static_map.forget_time_s", 5.0);
     pc.static_map.neighbor_tolerance = b("static_map.neighbor_tolerance", true);
+    pc.static_map.track_guided = b("static_map.track_guided", true);
 
     // risk
     RiskConfig & rc = pc.risk;
@@ -636,6 +656,14 @@ private:
       m.id = t.id;
       m.track_state = static_cast<std::uint8_t>(t.state);
       m.motion_state = static_cast<std::uint8_t>(t.motion);
+      m.occlusion_reason = static_cast<std::uint8_t>(t.occlusion);
+      m.velocity_status = static_cast<std::uint8_t>(t.velocity_status);
+      m.predicted = t.predicted;
+      m.merged = t.merged;
+      m.relative_motion_only = t.relative_only;
+      m.track_confidence = t.confidence;
+      m.motion_confidence = t.motion_confidence;
+      m.time_since_moving_s = t.time_since_moving_s;
       m.ever_moved = t.ever_moved;
       m.velocity_reliable = t.velocity_reliable;
       m.large_structure = t.large_structure;
@@ -1097,6 +1125,13 @@ private:
     s.tracks_moving = static_cast<std::uint32_t>(fi.tracker.moving);
     s.tracks_static = static_cast<std::uint32_t>(fi.tracker.static_tracks);
     s.tracks_created_total = fi.tracker.created_total;
+    s.tracks_occluded = static_cast<std::uint32_t>(fi.tracker.occluded);
+    s.tracks_lost = static_cast<std::uint32_t>(fi.tracker.lost);
+    s.tracks_reidentified_total = fi.tracker.reidentified_total;
+    s.merge_splits_total = fi.tracker.merge_splits_total;
+    s.tracker_predict_ms = static_cast<float>(fi.tracker.predict_ms);
+    s.tracker_association_ms = static_cast<float>(fi.tracker.association_ms);
+    s.tracker_occlusion_ms = static_cast<float>(fi.tracker.occlusion_ms);
     s.tracker_resets = fi.tracker.resets;
     s.tracker_mean_nis = static_cast<float>(fi.tracker.mean_nis);
     s.max_risk_level = static_cast<std::uint8_t>(fi.max_risk);
