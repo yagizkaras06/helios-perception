@@ -1,0 +1,169 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+    Property Tree Widget:
+      Splitter Ratio: 0.55
+    Tree Height: 600
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 40
+      Color: 100; 100; 100
+      Alpha: 0.4
+      Offset:
+        X: 0
+        Y: 0
+        Z: -0.9
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/Axes
+      Name: LiDAR origin
+      Enabled: true
+      Length: 0.6
+      Radius: 0.03
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: 1 Raw (rslidar_sdk)
+      Enabled: false
+      Topic:
+        Value: /rslidar_points
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Color Transformer: Intensity
+      Style: Points
+      Size (Pixels): 1
+      Alpha: 0.5
+      Decay Time: 0
+      Value: false
+    - Class: rviz_default_plugins/PointCloud2
+      Name: 2 Filtered (ROI + voxel)
+      Enabled: true
+      Topic:
+        Value: /helios/filtered_points
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Color Transformer: FlatColor
+      Color: 170; 170; 170
+      Style: Points
+      Size (Pixels): 2
+      Alpha: 0.35
+      Decay Time: 0
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: 3a Ground
+      Enabled: true
+      Topic:
+        Value: /helios/ground_points
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Color Transformer: FlatColor
+      Color: 40; 160; 60
+      Style: Points
+      Size (Pixels): 2
+      Alpha: 0.6
+      Decay Time: 0
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: 3b Obstacle points
+      Enabled: false
+      Topic:
+        Value: /helios/obstacle_points
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Color Transformer: FlatColor
+      Color: 255; 255; 255
+      Style: Points
+      Size (Pixels): 3
+      Alpha: 1
+      Decay Time: 0
+      Value: false
+    - Class: rviz_default_plugins/PointCloud2
+      Name: 4 Clusters
+      Enabled: true
+      Topic:
+        Value: /helios/obstacle_clusters
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Color Transformer: RGB8
+      Style: Points
+      Size (Pixels): 4
+      Alpha: 1
+      Decay Time: 0
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: 8 Tracks (id, motion, speed, heading, TTC, risk)
+      Enabled: true
+      Topic:
+        Value: /helios/track_markers
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Namespaces:
+        track_boxes: true
+        track_labels: true
+        track_velocity: true
+        track_prediction: true
+        track_uncertainty: true
+        track_trails: true
+        ego: true
+        status_hud: true
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: 5-7 Per-frame detections (AABB / centers / distances)
+      Enabled: false
+      Topic:
+        Value: /helios/obstacle_markers
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Namespaces:
+        boxes: true
+        centers: true
+        distances: true
+        status: true
+      Value: false
+  Enabled: true
+  Global Options:
+    Background Color: 30; 30; 35
+    Fixed Frame: rslidar
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 25
+      Focal Point:
+        X: 4
+        Y: 0
+        Z: 0
+      Pitch: 0.75
+      Yaw: 3.4
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+    Saved: ~
+Window Geometry:
+  Height: 900
+  Width: 1500

@@ -1,0 +1,209 @@
+# helios_obstacle_detection parameters (perception only - no actuation outputs).
+# All coordinates/distances are in the LiDAR frame (frame_id from the driver, "rslidar"):
+#   +X forward, +Y left, +Z up, origin = optical centre of the Helios 32.
+# Only Helios 32 data is used (no camera / GPS / IMU / wheel odometry).
+/**:
+  ros__parameters:
+    # ---------------------------------------------------------------- input / runtime
+    input_topic: /rslidar_points     # verified with `ros2 topic list` (rslidar_sdk config.yaml)
+    input_qos_depth: 1               # newest only -> no backlog (worker also keeps 1 frame)
+    input_reliability: reliable      # reliable | best_effort (best_effort lost ~90% of bag-replayed clouds)
+    threads: 2                       # worker pool size (0 = cores-1). Measured on the bag: 2 is as fast
+                                     # as 15 with less jitter/CPU; raise for dense outdoor scenes
+    publish_debug_clouds: true       # filtered/ground/obstacle/cluster clouds (only if subscribed)
+    marker_lifetime_s: 0.3           # ~3 frames at 10 Hz; stale markers disappear automatically
+    input_timeout_s: 0.5             # no data for this long -> NO_DATA status, markers cleared
+    max_processing_time_ms: 80.0     # above this a frame is counted as OVERLOAD (10 Hz -> 100 ms budget)
+    stats_period_s: 1.0              # /helios/processing_stats publish period
+    log_period_s: 5.0                # terminal performance report period (0 = off)
+    stats_window: 300                # samples used for mean / p95 / max (~30 s at 10 Hz)
+
+    # ---------------------------------------------------------------- sensor health / data loss
+    health:
+      expected_rate_hz: 10.0         # Helios 32 at 600 rpm
+      gap_factor: 1.5                # stamp gap > 1.5 periods -> frame gap (missed scans counted)
+      min_valid_ratio: 0.30          # finite returns / all returns (blocked or dirty window)
+      min_azimuth_coverage: 0.70     # share of 10 deg sectors with returns (packet loss / occlusion)
+      point_drop_ratio: 0.50         # returns < 50 % of running mean -> drop event
+      clock_sync_tolerance_s: 1.0    # |receive time - stamp| below -> sensor clock synchronised
+      event_memory_s: 10.0           # an event keeps the WARN level this long
+
+    # ---------------------------------------------------------------- pre-filter
+    filter:
+      min_range: 0.5                 # [m] removes near-field returns / mount
+      max_range: 30.0                # [m]
+      roi: [-30.0, 30.0, -30.0, 30.0, -2.5, 2.5]   # [min_x,max_x,min_y,max_y,min_z,max_z]
+      voxel_leaf_size: 0.10          # [m] nominal; 0 disables
+      self_filter:                   # remove vehicle body points (box in LiDAR frame)
+        enabled: false               # NOTE: the recorded test scene has a ~1.7 x 1.4 m structure
+        box: [-0.5, 0.5, -0.5, 0.5, -2.0, 0.5]   # around the sensor -> enable on the vehicle
+
+    # load-adaptive voxel grid: coarser voxels when the pipeline exceeds its time budget
+    adaptive:
+      enabled: true
+      target_ms: 50.0                # mean pipeline time per decision window
+      max_leaf: 0.20                 # [m]
+      leaf_step: 0.02                # [m]
+      window: 10                     # frames per decision
+
+    # ---------------------------------------------------------------- ground segmentation
+    ground:
+      method: czm                    # czm (concentric zones, Patchwork++-style) | ransac_zones (v0.1)
+      # Expected ground plane in the LiDAR frame: points p with n.p = expected_height.
+      # For a level mount n = [0,0,1] and expected_height = -(mount height above ground).
+      expected_normal: [0.0, 0.0, 1.0]
+      expected_height: -0.90         # [m] measured on the current setup
+      max_normal_angle_deg: 15.0     # [deg] allowed slope / mount tilt
+      candidate_below: 0.80          # [m] points deeper than this below the prior are not seeds
+      ground_threshold: 0.12         # [m] height above local plane still counted as ground
+      max_obstacle_height: 2.5       # [m] higher points ignored (ceilings, tree canopy)
+      below_ground_tolerance: 0.30   # [m] deeper points ignored (multipath / reflections)
+      # ransac_zones only
+      height_tolerance: 0.35
+      max_zone_height_jump: 0.30
+      candidate_above: 0.40
+      ransac_distance: 0.08
+      ransac_max_iterations: 150
+      max_plane_attempts: 4
+      min_zone_inliers: 60
+      zone_boundaries: [0.0, 8.0, 16.0, 30.0]
+      czm:
+        zone_boundaries: [0.0, 4.0, 10.0, 20.0, 30.0]   # [m] horizontal range
+        rings_per_zone: [2, 3, 3, 2]
+        sectors_per_zone: [16, 32, 48, 32]
+        min_bin_points: 8
+        seed_count: 20               # lowest points defining the seed height
+        seed_height: 0.15            # [m]
+        plane_distance: 0.10         # [m] PCA inlier band
+        fit_iterations: 3
+        min_planarity_ratio: 4.0     # middle/smallest eigenvalue (rejects line-like supports)
+        min_extent: 0.10             # [m]
+        elevation_rings: 4           # near rings checked against the mounting-height prior
+        elevation_threshold: 0.30    # [m] initial, then adaptive in [min, max]
+        elevation_min: 0.15
+        elevation_max: 0.50
+        flatness_threshold: 0.004    # [m^2] smallest eigenvalue, initial, adaptive in [min, max]
+        flatness_min: 0.001
+        flatness_max: 0.010
+        max_bin_height_jump: 0.25    # [m] vs. nearest accepted inner bin (tables, platforms)
+        max_corner_height_jump: 0.40 # [m] same at the bin corners (planes tilted by object bases)
+        continuity_rings: 2
+        far_requires_reference: true # far planes need an accepted inner bin (no ground returns
+                                     # reach 15.4-25.6 m on flat ground: lone planes = objects)
+        far_height_tolerance: 0.5    # [m] only if far_requires_reference is false
+        adaptive: true
+        adaptation_rate: 0.05
+        adaptive_sigma: 3.0
+        degraded_ratio: 0.5          # > 50 % of points on the configured prior -> DEGRADED
+
+    # ---------------------------------------------------------------- clustering / boxes
+    clustering:
+      tolerance: 0.45                # [m] minimum neighbour distance (> 1.5 x max voxel leaf)
+      min_points: 8
+      max_points: 25000
+      adaptive: true                 # tolerance grows with range (beam spacing of a 32-beam sensor)
+      tolerance_angle_deg: 1.5       # tol(r) = max(tolerance, r * tan(angle))
+      max_tolerance: 1.0             # [m]
+    boxes:
+      min_height: 0.05               # [m] flatter clusters are dropped
+      large_structure_size: 8.0      # [m] footprint flag for walls / buildings
+      max_obstacles: 100             # nearest N kept
+      oriented_boxes: true           # L-shape (closeness criterion) yaw fit
+      obb_angle_step_deg: 2.0
+
+    # ---------------------------------------------------------------- ego motion (LiDAR only)
+    ego_motion:
+      mode: estimate                 # estimate | assume_stationary (fixed test bench only!)
+      voxel_size: 0.30               # [m] registration down-sampling
+      min_range: 1.0
+      max_range: 25.0
+      max_points: 1500
+      normal_neighbors: 8
+      max_correspondence: 1.0        # [m]
+      max_iterations: 15
+      robust_kernel_scale: 0.07      # [m] Cauchy kernel
+      consensus_threshold: 0.06      # [m] support of zero / constant-velocity / ICP hypotheses
+      consensus_margin: 0.02         # simpler hypothesis wins within 2 % support
+      min_correspondences: 80
+      min_inlier_ratio: 0.30
+      min_degeneracy: 0.05           # translational observability (corridors, open fields)
+      max_velocity_sigma: 0.30       # [m/s]
+      max_speed: 20.0                # [m/s] plausibility
+      max_yaw_rate: 1.5              # [rad/s]
+      stationary_speed: 0.08         # [m/s]
+      stationary_yaw_rate: 0.03      # [rad/s]
+      state_hysteresis_frames: 3
+      max_prediction_time: 0.5       # [s] then UNKNOWN (velocities no longer ground-relative)
+      max_dt: 0.5                    # [s] larger stamp gaps reset the reference scan
+
+    # ---------------------------------------------------------------- multi-object tracking
+    tracking:
+      enabled: true
+      process_accel_sigma: 2.0       # [m/s^2] constant-velocity KF process noise
+      meas_sigma_base: 0.08          # [m]
+      meas_sigma_per_meter: 0.005    # [m/m]
+      meas_sigma_extent_factor: 0.10 # * max(L, W): box-centre uncertainty of large objects
+      sparse_points: 15
+      init_velocity_sigma: 3.0       # [m/s]
+      gate_chi2: 13.8                # 2 dof, 99.9 %
+      max_gate_distance: 3.0         # [m]
+      confirm_hits: 3
+      tentative_max_misses: 2
+      max_coast_time_s: 0.8
+      max_position_sigma: 2.0        # [m]
+      max_tracks: 256
+      max_dt: 1.0                    # [s] larger gaps / time jumps reset the tracker
+      shape_smoothing: 0.3
+      # moving / static classification
+      moving_speed: 0.30             # [m/s] tuned on a real indoor walking recording
+      static_speed: 0.20             # [m/s]
+      min_age_s: 0.5
+      displacement_window_s: 0.8
+      moving_min_displacement: 0.30  # [m]
+      motion_sigma_factor: 3.0
+      min_motion_samples: 5
+      shape_change_tolerance: 0.25   # [m] box change -> partial view, centre not used
+      shape_reset_frames: 5          # that many changed boxes in a row -> adopt the new shape
+      inconsistent_sample_weight: 0.3  # weight of shape-changed boxes in the motion regression
+      point_evidence_age_s: 0.5      # surface-consistency reference age
+      point_evidence_override_speed: 1.5   # [m/s]
+      snapshot_points: 48
+      motion_hysteresis_frames: 2
+      history_length: 30             # trail samples
+
+    # ---------------------------------------------------------------- static background map
+    # "Whatever stayed still for static_time_s is static": occupied voxels (odometry frame) that
+    # stay occupied become background; background / foreground points are clustered separately
+    # (a person next to a wall is separated from it). STATIC = background; dynamic objects that
+    # are not moving right now are UNKNOWN. Needs a usable ego-motion estimate.
+    static_map:
+      enabled: true
+      voxel_size: 0.15               # [m]
+      static_time_s: 10.0            # [s] still this long -> static
+      min_occupancy: 0.5             # share of frames the voxel was occupied since first seen
+      forget_time_s: 5.0             # [s] voxels unseen this long are dropped (object left)
+      neighbor_tolerance: true       # 26-neighbourhood (noise at surface edges)
+
+    # ---------------------------------------------------------------- TTC / risk (no control!)
+    risk:
+      ego_radius: 0.5                # [m] footprint approximated as a circle around the LiDAR
+      min_closing_speed: 0.2         # [m/s]
+      sigma_factor: 2.0              # pessimistic TTC uses closing speed + 2 sigma
+      horizon_s: 8.0
+      critical_ttc_s: 1.5
+      high_ttc_s: 3.0
+      medium_ttc_s: 5.0
+      critical_distance: 0.5         # [m] clearance
+      high_distance: 1.0
+      medium_distance: 2.5
+
+    # ---------------------------------------------------------------- RViz2
+    visualization:
+      show_tentative: false
+      show_static: false             # RViz: no boxes for STATIC tracks (still in /tracks + risk)
+      show_unknown: true             # RViz: draw UNKNOWN (= dynamic, not moving right now)
+      show_trails: true
+      show_uncertainty: true         # 2-sigma position ellipse
+      show_prediction: true          # constant relative-velocity path
+      arrow_time_s: 1.0              # velocity arrow = speed * 1 s
+      prediction_horizon_s: 3.0
