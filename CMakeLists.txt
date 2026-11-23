@@ -27,6 +27,8 @@ find_package(diagnostic_msgs REQUIRED)
 find_package(diagnostic_updater REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_storage REQUIRED)
+find_package(nlohmann_json REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Threads REQUIRED)
@@ -102,6 +104,30 @@ if(NOT pcl_conversions_TARGETS)
   target_include_directories(obstacle_detector PRIVATE ${pcl_conversions_INCLUDE_DIRS})
 endif()
 
+# ---------------------------------------------------------------- event recorder
+# version string for event metadata (from package.xml)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/package.xml" HELIOS_PACKAGE_XML)
+string(REGEX MATCH "<version>([^<]+)</version>" _v "${HELIOS_PACKAGE_XML}")
+set(HELIOS_VERSION "${CMAKE_MATCH_1}")
+add_library(helios_event_recorder src/event_recorder_core.cpp)
+target_include_directories(helios_event_recorder PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_link_libraries(helios_event_recorder PUBLIC
+  rclcpp::rclcpp
+  rosbag2_cpp::rosbag2_cpp
+  rosbag2_storage::rosbag2_storage
+  nlohmann_json::nlohmann_json
+  Threads::Threads)
+add_executable(event_recorder src/event_recorder_node.cpp)
+target_compile_definitions(event_recorder PRIVATE HELIOS_VERSION="${HELIOS_VERSION}")
+target_link_libraries(event_recorder
+  helios_event_recorder
+  ${diagnostic_updater_TARGETS}
+  ${diagnostic_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+  "${${PROJECT_NAME}_cpp_typesupport}")
+
 # ---------------------------------------------------------------- offline benchmark
 add_executable(helios_benchmark src/benchmark_main.cpp)
 target_link_libraries(helios_benchmark
@@ -111,6 +137,7 @@ target_link_libraries(helios_benchmark
 )
 
 install(TARGETS helios_obstacle_core helios_sim obstacle_detector helios_benchmark
+  helios_event_recorder event_recorder
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -129,16 +156,21 @@ if(BUILD_TESTING)
   find_package(launch_testing_ament_cmake REQUIRED)
 
   foreach(t test_pipeline test_tracking test_ego_motion test_ground_czm test_risk_health
-      test_static_map test_system test_tracking_v03 test_collision_warning)
+      test_static_map test_system test_tracking_v03 test_collision_warning test_event_recorder)
     ament_add_gtest(${t} test/${t}.cpp TIMEOUT 300)
     if(TARGET ${t})
       target_link_libraries(${t} helios_sim)
     endif()
   endforeach()
+  if(TARGET test_event_recorder)
+    target_link_libraries(test_event_recorder helios_event_recorder)
+  endif()
 
   # ROS graph level: node starts, consumes synthetic clouds, publishes tracks + diagnostics,
   # and never advertises actuation topics.
   add_launch_test(test/test_node_launch.py TIMEOUT 120)
+  # event recorder end-to-end: detector + recorder, CRITICAL risk + data loss -> rosbag2 events
+  add_launch_test(test/test_event_recorder_launch.py TIMEOUT 180)
 endif()
 
 ament_export_dependencies(rosidl_default_runtime)

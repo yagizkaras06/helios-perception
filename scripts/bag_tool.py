@@ -14,12 +14,15 @@ readable by `ros2 bag info` and the MCAP tools.
   ros2 run helios_obstacle_detection bag_tool.py record -o out --topic /rslidar_points --topic /helios/tracks
 
   ros2 run helios_obstacle_detection bag_tool.py info ~/helios_ws/bags/run1
+  # events written by the event_recorder node (reason, time, coverage, replay command)
+  ros2 run helios_obstacle_detection bag_tool.py events [~/helios_ws/logs/events]
   # replay on a separate topic so it never mixes with the live sensor
   ros2 run helios_obstacle_detection bag_tool.py play ~/helios_ws/bags/run1 \
       --remap /rslidar_points:=/bag/rslidar_points [--rate 1.0] [--loop] [--start 5.0]
 """
 
 import argparse
+import json
 import os
 import time
 
@@ -150,6 +153,45 @@ def play(a):
     rclpy.try_shutdown()
 
 
+def events(a):
+    root = os.path.expanduser(a.dir)
+    if not os.path.isdir(root):
+        raise SystemExit(f'no events folder: {root}')
+    rows = []
+    for d in sorted(os.listdir(root)):
+        meta_path = os.path.join(root, d, 'metadata.json')
+        if not os.path.exists(meta_path):
+            continue
+        with open(meta_path) as f:
+            m = json.load(f)
+        reasons = ', '.join(
+            r['type'] + (f"(track {r['track_id']})" if r.get('track_id') is not None else '')
+            for r in m.get('reasons', []))
+        w, i = m.get('window', {}), m.get('integrity', {})
+        size = sum(os.path.getsize(os.path.join(dp, fn))
+                   for dp, _, fns in os.walk(os.path.join(root, d)) for fn in fns)
+        flags = []
+        if w.get('pre_limited_by'):
+            flags.append(f"pre {w.get('pre_covered_s', 0):.1f}s ({w['pre_limited_by']})")
+        if i.get('sequence_gaps'):
+            flags.append(f"{i['sequence_gaps']} dropped")
+        if i.get('truncated_by_disk_budget'):
+            flags.append('truncated')
+        if i.get('write_error'):
+            flags.append('WRITE ERROR')
+        rows.append((d, m.get('trigger_wall_time', '?'), reasons,
+                     w.get('recorded_to_s', 0) - w.get('recorded_from_s', 0), size, flags,
+                     os.path.join(root, d, 'bag')))
+    if not rows:
+        print(f'no events in {root}')
+        return
+    for d, t, reasons, dur, size, flags, bag in rows:
+        print(f'{d}\n  time {t} | {reasons} | {dur:.1f} s | {size / 1e6:.1f} MB'
+              + (f" | {'; '.join(flags)}" if flags else ''))
+        print(f'  replay: ros2 launch helios_obstacle_detection replay.launch.py bag:={bag} rviz:=true'
+              f' [mode:=recorded]')
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -170,8 +212,10 @@ def main():
     p.add_argument('--start', type=float, default=0.0, help='skip the first N seconds')
     p.add_argument('--loop', action='store_true')
     p.add_argument('--discovery-wait', type=float, default=1.0)
+    e = sub.add_parser('events')
+    e.add_argument('dir', nargs='?', default='~/helios_ws/logs/events')
     a, _ = ap.parse_known_args()   # tolerate --ros-args appended by launch
-    {'record': record, 'info': info, 'play': play}[a.cmd](a)
+    {'record': record, 'info': info, 'play': play, 'events': events}[a.cmd](a)
 
 
 if __name__ == '__main__':

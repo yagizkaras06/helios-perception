@@ -8,6 +8,8 @@ Examples:
   ros2 launch helios_obstacle_detection detection.launch.py input_topic:=/other_points
   # record raw LiDAR + every output + diagnostics while running:
   ros2 launch helios_obstacle_detection detection.launch.py record:=true record_dir:=~/helios_ws/bags/run1
+  # automatic event recording (5 s before / after CRITICAL risk, data loss, ego loss):
+  ros2 launch helios_obstacle_detection detection.launch.py record_events:=true [events_dir:=/path]
 """
 
 import os
@@ -74,7 +76,28 @@ def launch_setup(context):
         condition=IfCondition(LaunchConfiguration('record')),
         output='screen',
     )
-    return [detector, rviz, record]
+    recorder_params = [
+        LaunchConfiguration('params_file'),
+        {
+            'input_topic': LaunchConfiguration('input_topic'),
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'events.detector_node': 'obstacle_detector',
+        },
+    ]
+    events_dir = LaunchConfiguration('events_dir').perform(context)
+    if events_dir:
+        recorder_params.append({'events.output_dir': events_dir})
+    recorder = Node(
+        package='helios_obstacle_detection',
+        executable='event_recorder',
+        name='event_recorder',
+        namespace=ns,
+        output='screen',
+        emulate_tty=True,
+        parameters=recorder_params,
+        condition=IfCondition(LaunchConfiguration('record_events')),
+    )
+    return [detector, rviz, record, recorder]
 
 
 def generate_launch_description():
@@ -93,5 +116,9 @@ def generate_launch_description():
         DeclareLaunchArgument('record', default_value='false'),
         DeclareLaunchArgument('record_dir', default_value='/tmp/helios_record'),
         DeclareLaunchArgument('record_duration', default_value='60'),
+        DeclareLaunchArgument('record_events', default_value='false',
+                              description='start the event_recorder node (pre/post event bags)'),
+        DeclareLaunchArgument('events_dir', default_value='',
+                              description='event folder (default: events.output_dir in params)'),
     ]
     return LaunchDescription(args + [OpaqueFunction(function=launch_setup)])

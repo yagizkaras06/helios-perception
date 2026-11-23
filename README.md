@@ -14,7 +14,7 @@ yön tahmini, belirsizliğe duyarlı **TTC / risk seviyesi**, sensör veri kayb�
 ## İçindekiler
 1. [Mimari](#mimari) · 2. [Algoritmalar](#algoritmalar) · 3. [Belirsizlik ve sınırlar](#belirsizlik-ve-sınırlar)
 4. [Topic'ler ve mesajlar](#topicler-ve-mesajlar) · 5. [Derleme / çalıştırma / test](#derleme--çalıştırma--test)
-6. [Kayıt ve tekrar oynatma](#kayıt-ve-tekrar-oynatma) · 7. [Ölçülen sonuçlar](#ölçülen-sonuçlar)
+6. [Kayıt ve tekrar oynatma](#kayıt-ve-tekrar-oynatma) · 6b. [Otomatik olay kaydı](#otomatik-olay-kaydı-event_recorder) · 7. [Ölçülen sonuçlar](#ölçülen-sonuçlar)
 8. [Bu kurulumda tespit edilenler](#bu-kurulumda-tespit-edilenler) · 9. [Ayar ipuçları](#ayar-ipuçları)
 
 ## Mimari
@@ -221,6 +221,86 @@ ros2 launch helios_obstacle_detection detection.launch.py record:=true record_di
 # canlı sistemle KARIŞMADAN tekrar oynatma: /bag/rslidar_points + ayrı namespace (helios_bag)
 ros2 launch helios_obstacle_detection replay.launch.py bag:=$HOME/helios_ws/bags/helios_test_20s rviz:=true loop:=true
 ```
+## Otomatik olay kaydı (event_recorder)
+
+Kritik bir olay olduğunda olayın **5 s öncesini ve 5 s sonrasını** kaydeder: ham LiDAR + algılama
+çıktıları + dedektörün diagnostics mesajları, rosbag2 (MCAP) olarak ve okunabilir `metadata.json`
+ile. Ayrı bir ROS düğümüdür (`event_recorder`); dedektörü yavaşlatmaz, yazma hatasında dedektör
+çalışmaya devam eder. Varsayılan olarak **kapalıdır**.
+
+```bash
+# başlatma (dedektörle aynı namespace; topic adları ve giriş QoS'u aynı detection.yaml'dan)
+ros2 launch helios_obstacle_detection detection.launch.py record_events:=true
+ros2 launch helios_obstacle_detection detection.launch.py record_events:=true events_dir:=/mnt/usb/events
+
+# olayları listele (zaman, neden, süre, boyut, uyarılar, tekrar oynatma komutu)
+ros2 run helios_obstacle_detection bag_tool.py events            # ~/helios_ws/logs/events
+
+# tekrar oynatma (canlı sistemle karışmaz; /bag/... ve helios_bag namespace'i)
+#  a) dedektör ham veri üzerinde yeniden çalışır (güncel kod / parametrelerle)
+ros2 launch helios_obstacle_detection replay.launch.py bag:=<olay>/bag rviz:=true
+#  b) kaydedilmiş çıktılar olduğu gibi (izler, kutular, uyarı, istatistik) RViz'de
+ros2 launch helios_obstacle_detection replay.launch.py bag:=<olay>/bag mode:=recorded rviz:=true
+```
+Olay kaydındaki topic adları ve namespace `metadata.json`'dan otomatik okunur
+(`bag_input_topic:=`, `bag_namespace:=` ile değiştirilebilir). `mode:=recorded`'da ham bulut RViz'in
+"Nokta bulutu" katmanına (`/helios_bag/filtered_points`) yönlendirilir.
+
+**Tetikleyiciler** (kenar algılamalı: aynı durum her mesajda yeni olay üretmez)
+
+| Neden | Koşul | Başlangıçta |
+|---|---|---|
+| `critical_risk` | En yüksek risk CRITICAL'a geçer (izin ID'si kaydedilir). STATIC arka plan sayılmaz; statik harita öğrenirken yalnızca hareket etmiş nesneler sayılır | İlk mesajda zaten CRITICAL ise önce en az `rearm_s` temizlenmesi gerekir |
+| `no_data` | Akmakta olan LiDAR verisi kesilir (`STATUS_NO_DATA`) | Hiç veri gelmeden NO_DATA normaldir, olay değildir |
+| `ego_unknown` | Kullanılabilir ego tahmini `EGO_UNKNOWN`'a düşer | İlk geçerli tahminden önce, ve veri kesintisi sonrası yeniden başlarken olay değildir |
+
+Bir durum en az `rearm_s` (1 s) ortadan kalkmadan / geçerli olmadan tekrar tetiklemez. Kayıt sürerken
+gelen tetikleyiciler aynı olaya eklenir ve "sonrası" penceresini uzatır (en çok `max_event_s`).
+
+**Klasör örneği**
+```
+~/helios_ws/logs/events/
+└── 20261123_221835_217_critical_risk/
+    ├── metadata.json
+    └── bag/
+        ├── bag_0.mcap
+        └── metadata.yaml
+```
+`metadata.json` içeriği: `event_id`, `software_version`, `trigger_wall_time`, `reasons` (tür, zaman,
+olaya göre saniye, `track_id`, açıklama), `window` (istenen / **gerçekten kapsanan** öncesi süresi ve
+neden kısa kaldığı: `buffer_bytes` = RAM sınırı, `history` = kaydedici / veri daha yeni başladı;
+sonrası, bitiş nedeni `post_window` / `max_duration` / `shutdown`), topic başına mesaj ve bayt
+sayıları, `integrity` (sıra numarası boşlukları = yazma kuyruğunda düşen mesajlar, sıra dışı mesaj,
+disk bütçesiyle kesilme, yazma hatası), `time_jumps` (duvar saati ve sensör damgası sıçramaları),
+dedektörün ve kaydedicinin **etkin parametreleri** ve tekrar oynatma komutları.
+
+**Zaman**: pencereler bilgisayarın monotonik saatiyle yönetilir (LiDAR saati senkron değildir,
+kullanılmaz). Mesajlar bayt bayt aynı yazılır (header damgaları korunur). Bag zamanı =
+tetik anının duvar saati + monotonik fark; duvar saati sıçrarsa kayıt sırası bozulmaz, sıçrama
+`time_jumps`'a yazılır. Her mesaja artan bir sıra numarası verilir; tampondan canlı kayda geçiş aynı
+kilit altında yapılır (kayıp / çift kayıt yok, yazıcı sürekliliği doğrular).
+
+**Parametreler** (`config/detection.yaml` → `events.*`)
+
+| Parametre | Varsayılan | Anlamı |
+|---|---|---|
+| `output_dir` | `~/helios_ws/logs/events` | olay klasörü (`events_dir:=` launch argümanı ile de) |
+| `pre_event_s` / `post_event_s` | 5 / 5 | öncesi / sonrası [s] |
+| `max_event_s` | 60 | birleşen tetikleyicilerle en uzun olay [s] |
+| `rearm_s` | 1.0 | tekrar tetikleme için gereken süre [s] |
+| `trigger_critical_risk` / `trigger_no_data` / `trigger_ego_unknown` | true | tetikleyiciler |
+| `risk_ignore_static` | true | STATIC arka plan (sensör yanındaki masa) risk olayı üretmez |
+| `record_track_markers` / `record_collision_warning` | true | RViz kutuları ve uyarı da kaydedilir |
+| `buffer_max_mb` | 192 | RAM öncesi tamponu (ham Helios ≈ 9 MB/s → 5 s ≈ 46 MB) |
+| `queue_max_mb` | 256 | RAM yazma kuyruğu; dolarsa mesaj düşer ve raporlanır |
+| `max_event_disk_mb` | 1024 | olay başına disk sınırı (aşılırsa olay kesilir, işaretlenir) |
+| `max_total_disk_mb` | 4096 | klasör toplamı; aşılırsa yeni olay kaydedilmez |
+| `min_free_disk_mb` | 1024 | diskte bu kadar boş yer kalmazsa yeni olay kaydedilmez |
+
+Bir olay ≈ 10 s × ~9.5 MB/s ≈ **100 MB** (ham bulut baskın). Durum `/diagnostics`'te
+"event_recorder: Event recorder" başlığıyla görünür (tampon süresi / boyutu, kuyruk, düşen mesajlar,
+disk, son hata). Disk dolarsa veya yazılamazsa ERROR; `/<ns>/recorder_events` (std_msgs/String,
+JSON) olay başlangıç / birleşme / bitişlerini yayınlar.
 
 ## Ölçülen sonuçlar
 

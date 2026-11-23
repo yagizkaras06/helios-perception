@@ -234,6 +234,30 @@
       raise_frames: 2                # consecutive scans before the banner changes up
       hold_s: 1.0                    # [s] banner held after the condition disappears
 
+    # ---------------------------------------------------------------- event recorder (optional)
+    # Read by the event_recorder node (launch with record_events:=true); ignored by the detector.
+    # Records <pre_event_s> before and <post_event_s> after a CRITICAL risk, a lost LiDAR stream
+    # or a lost ego-motion estimate into <output_dir>/<id>/{bag/, metadata.json}.
+    events:
+      output_dir: ~/helios_ws/logs/events
+      pre_event_s: 5.0
+      post_event_s: 5.0
+      max_event_s: 60.0              # repeated triggers extend one event up to this length
+      rearm_s: 1.0                   # a condition must clear / be valid this long to fire again
+      trigger_critical_risk: true
+      trigger_no_data: true
+      trigger_ego_unknown: true
+      risk_ignore_static: true       # STATIC background (desk at the sensor) never fires; while the
+                                     # background is still learned only objects that moved count
+      record_track_markers: true     # RViz boxes as they were shown
+      record_collision_warning: true
+      buffer_max_mb: 192.0           # RAM pre-event buffer (raw Helios ~9 MB/s)
+      queue_max_mb: 256.0            # RAM write queue (messages dropped + reported beyond)
+      max_event_disk_mb: 1024.0
+      max_total_disk_mb: 4096.0      # whole events folder; no new events beyond (diagnostics)
+      min_free_disk_mb: 1024.0
+      storage_id: mcap
+
     # ---------------------------------------------------------------- RViz2
     visualization:
       show_tentative: false
