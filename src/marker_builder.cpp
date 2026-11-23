@@ -229,6 +229,11 @@ MarkerArray buildTrackMarkers(
     if (t.state == TrackState::kTentative && !cfg.show_tentative) {
       continue;
     }
+    if (cfg.only_dynamic_after_learning && !frame.background_learning &&
+      !(t.motion == MotionState::kMoving || t.ever_moved))
+    {
+      continue;   // static scene learned: draw dynamic objects only
+    }
     const RiskAssessment & r = frame.risks[i];
     const bool tentative = t.state == TrackState::kTentative;
     // box colour = motion state (MOVING red, UNKNOWN yellow, STATIC grey-blue); risk is shown by
@@ -398,7 +403,8 @@ MarkerArray buildTrackMarkers(
   std::snprintf(buf, sizeof(buf), "EGO %s %.2fm/s | GROUND %s | RISK %s | moving %zu / tracks %zu",
     toString(ego.state), ego.velocity.norm(), toString(frame.ground.status),
     toString(frame.max_risk), frame.tracker_stats.moving, frame.tracker_stats.confirmed);
-  std::string learn = frame.background_learning ? " | learning static background" : "";
+  std::string learn = frame.background_learning ? " | learning static background (all shown)" :
+    (cfg.only_dynamic_after_learning ? " | dynamic only" : "");
   hud.text = std::string(buf) + learn + (status_line.empty() ? "" : "\n" + status_line);
   arr.markers.push_back(std::move(hud));
   return arr;

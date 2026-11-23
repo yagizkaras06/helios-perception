@@ -433,6 +433,7 @@ private:
     viz_.show_tentative = b("visualization.show_tentative", false);
     viz_.show_static = b("visualization.show_static", false);
     viz_.show_unknown = b("visualization.show_unknown", true);
+    viz_.only_dynamic_after_learning = b("visualization.only_dynamic_after_learning", true);
     viz_.show_trails = b("visualization.show_trails", true);
     viz_.show_uncertainty = b("visualization.show_uncertainty", true);
     viz_.show_prediction = b("visualization.show_prediction", true);

@@ -35,6 +35,10 @@ struct TrackVizConfig
   bool show_tentative{false};
   bool show_static{false};    // draw STATIC tracks (they stay in /tracks and in the risk anyway)
   bool show_unknown{true};    // draw UNKNOWN tracks (dynamic but not moving now / no evidence)
+  // While the static background map is learning (first static_time_s) everything is drawn; after
+  // that only dynamic objects (MOVING now or moved at some point). Visualisation only: all tracks
+  // stay in /tracks and in the risk assessment.
+  bool only_dynamic_after_learning{true};
   bool show_trails{true};
   bool show_uncertainty{true};
   bool show_prediction{true};
