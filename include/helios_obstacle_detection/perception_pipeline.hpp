@@ -20,6 +20,7 @@
 #include "helios_obstacle_detection/bounding_box.hpp"
 #include "helios_obstacle_detection/cloud_processor.hpp"
 #include "helios_obstacle_detection/collision_risk.hpp"
+#include "helios_obstacle_detection/collision_warning.hpp"
 #include "helios_obstacle_detection/czm_ground_segmenter.hpp"
 #include "helios_obstacle_detection/ego_motion_estimator.hpp"
 #include "helios_obstacle_detection/ground_segmenter.hpp"
@@ -64,6 +65,7 @@ struct PipelineConfig
   TrackerConfig tracker;
   StaticMapConfig static_map;         // background model ("still for N s -> static")
   RiskConfig risk;
+  WarningConfig warning;              // operator collision warning (display only)
   AdaptiveConfig adaptive;
   int threads{2};                     // pool workers (0 = auto: cores - 1)
 
@@ -98,6 +100,7 @@ struct FrameOutput
   std::vector<RiskAssessment> risks;  // parallel to tracks
   RiskLevel max_risk{RiskLevel::kNone};
   int max_risk_track{-1};             // index into tracks
+  CollisionWarning warning;           // operator collision warning (hysteresis applied)
   TrackerStats tracker_stats;
   std::size_t background_points{0};   // non-ground points classified as static background
   std::size_t static_voxels{0};
@@ -141,6 +144,7 @@ private:
   std::unique_ptr<EgoMotionEstimator> ego_;
   std::unique_ptr<StaticBackgroundMap> static_map_;
   std::unique_ptr<MultiObjectTracker> tracker_;
+  std::unique_ptr<CollisionWarningFilter> warning_;
   std::vector<ExclusionZone> exclusions_;   // moving tracks of the previous frame
   EgoMotion external_ego_;
   float voxel_leaf_{0.F};

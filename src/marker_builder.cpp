@@ -368,6 +368,41 @@ MarkerArray buildTrackMarkers(
     }
   }
 
+  // ---- collision warning: big banner above the sensor, threat line, ego circle colour --------
+  const CollisionWarning & w = frame.warning;
+  const Rgb warn_col = w.level == WarningLevel::kWarning ? Rgb{1.F, 0.1F, 0.1F} :
+    (w.level == WarningLevel::kCaution ? Rgb{1.F, 0.6F, 0.05F} : Rgb{0.2F, 0.9F, 0.3F});
+  {
+    Marker banner = makeMarker(header, "collision_warning", 0, Marker::TEXT_VIEW_FACING, lifetime);
+    banner.pose.position = toPoint(0.F, 0.F, 3.2F);
+    banner.scale.z = w.level == WarningLevel::kClear ? 0.35 : 0.6;
+    setColor(banner, warn_col, 1.F);
+    banner.text = w.text.empty() ? std::string("CARPISMA YOK") : w.text;
+    arr.markers.push_back(std::move(banner));
+  }
+  if (w.level != WarningLevel::kClear && w.track_index >= 0 &&
+    static_cast<std::size_t>(w.track_index) < frame.tracks.size())
+  {
+    const TrackOutput & tt = frame.tracks[static_cast<std::size_t>(w.track_index)];
+    // line object -> sensor and the predicted relative path up to the closest approach
+    Marker line = makeMarker(header, "collision_warning", 1, Marker::LINE_LIST, lifetime);
+    line.scale.x = w.level == WarningLevel::kWarning ? 0.12 : 0.07;
+    setColor(line, warn_col, 0.9F);
+    line.points.push_back(toPoint(tt.closest_point.x(), tt.closest_point.y(), 0.F));
+    line.points.push_back(toPoint(0.F, 0.F, 0.F));
+    const float tc = std::isfinite(w.cpa_time) ? std::min(w.cpa_time, 8.F) : 0.F;
+    line.points.push_back(toPoint(tt.center.x(), tt.center.y(), 0.05F));
+    line.points.push_back(toPoint(tt.center.x() + tt.relative_velocity.x() * tc,
+      tt.center.y() + tt.relative_velocity.y() * tc, 0.05F));
+    arr.markers.push_back(std::move(line));
+    // highlight box around the threat
+    Marker hl = makeMarker(header, "collision_warning", 2, Marker::LINE_LIST, lifetime);
+    hl.scale.x = 0.12;
+    setColor(hl, warn_col, 1.F);
+    addOrientedBoxEdges(hl, tt.center, tt.size + Eigen::Vector3f(0.2F, 0.2F, 0.2F), tt.yaw);
+    arr.markers.push_back(std::move(hl));
+  }
+
   // ego footprint + velocity
   const EgoMotion & ego = frame.ego;
   Rgb ego_col{0.3F, 0.9F, 0.3F};
@@ -376,11 +411,14 @@ MarkerArray buildTrackMarkers(
   } else if (ego.state == EgoState::kUnreliable) {
     ego_col = {1.F, 0.7F, 0.1F};
   }
+  if (w.level != WarningLevel::kClear) {
+    ego_col = warn_col;   // the footprint lights up with the warning
+  }
   Marker foot = makeMarker(header, "ego", 0, Marker::CYLINDER, lifetime);
   foot.pose.position = toPoint(0.F, 0.F, -0.2F);
   foot.scale.x = foot.scale.y = 2.0 * std::max(cfg.ego_radius, 0.05F);
   foot.scale.z = 0.05;
-  setColor(foot, ego_col, 0.35F);
+  setColor(foot, ego_col, w.level == WarningLevel::kClear ? 0.35F : 0.7F);
   arr.markers.push_back(std::move(foot));
   if (ego.valid && ego.velocity.norm() >= cfg.min_arrow_speed) {
     Marker ev = makeMarker(header, "ego", 1, Marker::ARROW, lifetime);

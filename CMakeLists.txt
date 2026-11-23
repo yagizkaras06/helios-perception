@@ -40,6 +40,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ProcessingStats.msg"
   "msg/TrackedObject.msg"
   "msg/TrackedObjectArray.msg"
+  "msg/CollisionWarning.msg"
   DEPENDENCIES std_msgs geometry_msgs
 )
 rosidl_get_typesupport_target(${PROJECT_NAME}_cpp_typesupport ${PROJECT_NAME} rosidl_typesupport_cpp)
@@ -57,6 +58,7 @@ add_library(helios_obstacle_core
   src/multi_object_tracker.cpp
   src/static_map.cpp
   src/collision_risk.cpp
+  src/collision_warning.cpp
   src/sensor_health.cpp
   src/resource_monitor.cpp
   src/perception_pipeline.cpp
@@ -127,7 +129,7 @@ if(BUILD_TESTING)
   find_package(launch_testing_ament_cmake REQUIRED)
 
   foreach(t test_pipeline test_tracking test_ego_motion test_ground_czm test_risk_health
-      test_static_map test_system test_tracking_v03)
+      test_static_map test_system test_tracking_v03 test_collision_warning)
     ament_add_gtest(${t} test/${t}.cpp TIMEOUT 300)
     if(TARGET ${t})
       target_link_libraries(${t} helios_sim)

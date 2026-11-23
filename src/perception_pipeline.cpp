@@ -48,6 +48,7 @@ void PipelineConfig::validate()
   tracker.validate();
   static_map.validate();
   risk.validate();
+  warning.validate();
   adaptive.validate(filter.voxel_leaf_size);
   if (ground_method != "czm" && ground_method != "ransac_zones") {
     throw std::invalid_argument("ground.method must be 'czm' or 'ransac_zones'");
@@ -79,6 +80,7 @@ PerceptionPipeline::PerceptionPipeline(const PipelineConfig & config)
     static_map_ = std::make_unique<StaticBackgroundMap>(config_.static_map);
   }
   tracker_ = std::make_unique<MultiObjectTracker>(config_.tracker);
+  warning_ = std::make_unique<CollisionWarningFilter>(config_.warning, config_.risk);
   voxel_leaf_ = config_.filter.voxel_leaf_size;
 }
 
@@ -91,6 +93,7 @@ void PerceptionPipeline::reset()
   ground_->reset();
   ego_->reset();
   tracker_->reset();
+  warning_->reset();
   load_sum_ms_ = 0.0;
   load_frames_ = 0;
 }
@@ -268,6 +271,7 @@ void PerceptionPipeline::processFiltered(const CloudPtr & roi, double stamp, Fra
         out.max_risk_track = static_cast<int>(i);
       }
     }
+    out.warning = warning_->update(stamp, out.tracks, out.risks);
   }
   // exclusion zones for the next registration: where moving objects will be (constant
   // relative velocity over one nominal period)

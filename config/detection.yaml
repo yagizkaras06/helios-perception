@@ -218,6 +218,22 @@
       high_distance: 1.0
       medium_distance: 2.5
 
+    # ---------------------------------------------------------------- collision warning (display)
+    # Banner in RViz + /helios/collision_warning. Only approaching objects with a RELIABLE velocity
+    # whose predicted path reaches the ego circle can raise "collision predicted". Not connected to
+    # vehicle control.
+    warning:
+      enabled: true
+      warning_ttc_s: 3.0             # [s] expected TTC on a collision course -> WARNING (red);
+                                     #     only the pessimistic TTC this short -> CAUTION
+      caution_ttc_s: 6.0             # [s] expected TTC on a collision course -> CAUTION (orange)
+      near_distance: 1.0             # [m] approaching dynamic object this close -> CAUTION
+      min_closing_speed: 0.3         # [m/s] slower is not "coming at me"
+      min_object_displacement: 0.5   # [m] MOVING objects must have travelled this far (not MOVING:
+                                     #     own velocity taken as 0, only the ego motion counts)
+      raise_frames: 2                # consecutive scans before the banner changes up
+      hold_s: 1.0                    # [s] banner held after the condition disappears
+
     # ---------------------------------------------------------------- RViz2
     visualization:
       show_tentative: false

@@ -35,6 +35,7 @@
 #include "helios_obstacle_detection/msg/obstacle_array.hpp"
 #include "helios_obstacle_detection/msg/processing_stats.hpp"
 #include "helios_obstacle_detection/msg/tracked_object_array.hpp"
+#include "helios_obstacle_detection/msg/collision_warning.hpp"
 #include "helios_obstacle_detection/perception_pipeline.hpp"
 #include "helios_obstacle_detection/performance_monitor.hpp"
 #include "helios_obstacle_detection/resource_monitor.hpp"
@@ -114,6 +115,8 @@ public:
       create_publisher<visualization_msgs::msg::MarkerArray>("track_markers", out_qos);
     pub_obstacles_ = create_publisher<ObstacleArrayMsg>("obstacles", rclcpp::QoS(5).reliable());
     pub_tracks_ = create_publisher<TrackArrayMsg>("tracks", rclcpp::QoS(5).reliable());
+    pub_warning_ = create_publisher<helios_obstacle_detection::msg::CollisionWarning>(
+      "collision_warning", rclcpp::QoS(5).reliable());
     pub_stats_ = create_publisher<StatsMsg>("processing_stats", rclcpp::QoS(10).reliable());
 
     // KeepLast(depth=1): the DDS reader keeps only the newest cloud -> never queues stale data.
@@ -414,6 +417,16 @@ private:
     rc.critical_distance = f("risk.critical_distance", 0.5);
     rc.high_distance = f("risk.high_distance", 1.0);
     rc.medium_distance = f("risk.medium_distance", 2.5);
+    // collision warning (display only)
+    WarningConfig & wc = pc.warning;
+    wc.enabled = b("warning.enabled", true);
+    wc.warning_ttc_s = f("warning.warning_ttc_s", 3.0);
+    wc.caution_ttc_s = f("warning.caution_ttc_s", 6.0);
+    wc.near_distance = f("warning.near_distance", 1.0);
+    wc.min_closing_speed = f("warning.min_closing_speed", 0.3);
+    wc.min_object_displacement = f("warning.min_object_displacement", 0.5);
+    wc.raise_frames = i("warning.raise_frames", 2);
+    wc.hold_s = f("warning.hold_s", 1.0);
 
     pipeline_ = std::make_unique<PerceptionPipeline>(pc);  // validates everything
 
@@ -548,6 +561,32 @@ private:
     // primary outputs first
     pub_obstacles_->publish(toObstacleMsg(msg->header, *frame));
     pub_tracks_->publish(toTrackMsg(msg->header, *frame));
+    {
+      const CollisionWarning & w = frame->warning;
+      helios_obstacle_detection::msg::CollisionWarning wm;
+      wm.header = msg->header;
+      wm.level = static_cast<std::uint8_t>(w.level);
+      wm.collision_predicted = w.collision_predicted;
+      wm.track_id = w.track_id;
+      wm.distance = w.distance;
+      wm.clearance = w.clearance;
+      wm.closing_speed = w.closing_speed;
+      wm.closing_speed_sigma = w.closing_speed_sigma;
+      wm.ttc = w.ttc;
+      wm.ttc_pessimistic = w.ttc_pessimistic;
+      wm.cpa_time = w.cpa_time;
+      wm.cpa_distance = w.cpa_distance;
+      wm.text = w.text;
+      pub_warning_->publish(wm);
+      if (w.level != last_warning_level_) {
+        if (w.level == WarningLevel::kClear) {
+          RCLCPP_INFO(get_logger(), "collision warning cleared");
+        } else {
+          RCLCPP_WARN(get_logger(), "%s", w.text.c_str());
+        }
+        last_warning_level_ = w.level;
+      }
+    }
     const auto published = SteadyClock::now();
 
     const StageTimes & st = frame->times;
@@ -1220,6 +1259,8 @@ private:
     pub_track_markers_;
   rclcpp::Publisher<ObstacleArrayMsg>::SharedPtr pub_obstacles_;
   rclcpp::Publisher<TrackArrayMsg>::SharedPtr pub_tracks_;
+  rclcpp::Publisher<helios_obstacle_detection::msg::CollisionWarning>::SharedPtr pub_warning_;
+  WarningLevel last_warning_level_{WarningLevel::kClear};
   rclcpp::Publisher<StatsMsg>::SharedPtr pub_stats_;
   rclcpp::TimerBase::SharedPtr stats_timer_;
 

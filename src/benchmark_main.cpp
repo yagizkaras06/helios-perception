@@ -353,7 +353,8 @@ std::string runBag(const Args & a)
   if (!a.csv.empty()) {
     csv.open(a.csv);
     csv << "frame,stamp,total_ms,ground_ms,cluster_ms,ego_ms,points_voxel,obstacles,tracks,"
-      "confirmed,moving,ground_status,ego_state,ego_vx,ego_vy,max_risk\n";
+      "confirmed,moving,ground_status,ego_state,ego_vx,ego_vy,max_risk,warning,warning_id,"
+      "warning_ttc,warning_ttc_pess,warning_dist\n";
   }
   std::ofstream tcsv;
   if (!a.tracks_csv.empty()) {
@@ -442,6 +443,8 @@ std::string runBag(const Args & a)
           ',' << out.tracker_stats.confirmed << ',' << out.tracker_stats.moving << ',' <<
           toString(out.ground.status) << ',' << toString(out.ego.state) << ',' <<
           out.ego.velocity.x() << ',' << out.ego.velocity.y() << ',' << toString(out.max_risk) <<
+          ',' << toString(out.warning.level) << ',' << out.warning.track_id << ',' <<
+          out.warning.ttc << ',' << out.warning.ttc_pessimistic << ',' << out.warning.distance <<
           '\n';
       }
     }

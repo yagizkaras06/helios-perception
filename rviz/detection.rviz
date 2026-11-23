@@ -123,6 +123,7 @@ Visualization Manager:
         track_trails: true
         ego: true
         status_hud: true
+        collision_warning: true
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Name: 5-7 Per-frame detections (AABB / centers / distances)
