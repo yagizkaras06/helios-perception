@@ -1,2 +1,19 @@
+# colcon / build output
+build/
+install/
+log/
+# python
 __pycache__/
 *.pyc
+# recordings and run-time output (large, may contain site data)
+*.mcap
+*.db3
+bags/
+logs/
+events/
+*.npz
+*.npy
+# local tooling
+.vscode/
+.idea/
+*.swp

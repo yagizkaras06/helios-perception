@@ -178,7 +178,8 @@ class TestEventRecorder(unittest.TestCase):
                 self.assertEqual(len(stamps), len(set(stamps)), 'duplicate raw messages')
                 for s in stamps:   # header stamps preserved exactly
                     self.assertTrue(any(abs(s - x) < 1000 for x in sent_ns), s)
-                # frames missing in the recording (best-effort raw subscription) are reported exactly
+                # frames missing in the recording (best-effort raw subscription) are
+                # reported exactly
                 idx = [min(range(len(sent_ns)), key=lambda i: abs(sent_ns[i] - s)) for s in stamps]
                 missing = (idx[-1] - idx[0] + 1) - len(idx)
                 self.assertEqual(meta['integrity']['raw_input_missing_frames_estimate'], missing)

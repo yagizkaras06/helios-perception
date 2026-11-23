@@ -4,13 +4,9 @@
   <name>helios_obstacle_detection</name>
   <version>0.3.0</version>
   <description>
-    Perception-only LiDAR stack for the RoboSense Helios 32 (LiDAR data only, no camera / GPS /
-    IMU): ROI + load-adaptive voxel filtering, concentric-zone (Patchwork++-style) ground
-    segmentation, range-adaptive clustering, oriented 3D boxes, LiDAR-only ego-motion
-    estimation, Kalman/Hungarian multi-object tracking with moving/static classification,
-    velocity/heading estimation, uncertainty-aware TTC / risk grading, sensor data-loss and
-    latency analysis, diagnostics, RViz2 visualisation, offline benchmark and tests.
-    Publishes no actuation commands.
+    Perception-only obstacle detection, multi-object tracking, collision warning and event
+    recording for the RoboSense Helios 32 LiDAR (ROS 2 Jazzy). LiDAR data only; publishes no
+    actuation commands.
   </description>
   <maintainer email="maintainer@example.com">helios</maintainer>
   <license>Apache-2.0</license>
@@ -39,6 +35,7 @@
   <exec_depend>rviz2</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>rosbag2_py</exec_depend>
+  <exec_depend>rosbag2_storage_mcap</exec_depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>

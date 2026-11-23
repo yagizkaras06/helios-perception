@@ -1,0 +1,42 @@
+name: build-and-test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  jazzy:
+    runs-on: ubuntu-24.04
+    container: ros:jazzy-ros-base-noble
+    env:
+      ROS_DOMAIN_ID: 42
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src/helios_obstacle_detection
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y python3-flake8
+          rosdep update --rosdistro jazzy
+          rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
+
+      - name: Python lint
+        shell: bash
+        run: cd src/helios_obstacle_detection && python3 -m flake8 scripts tools test launch
+
+      - name: Build
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build --packages-select helios_obstacle_detection \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release
+
+      - name: Test
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon test --packages-select helios_obstacle_detection --event-handlers console_direct+
+          colcon test-result --verbose

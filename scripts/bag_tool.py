@@ -11,7 +11,8 @@ readable by `ros2 bag info` and the MCAP tools.
   # raw LiDAR + every perception output + diagnostics (for later inspection in RViz)
   ros2 run helios_obstacle_detection bag_tool.py record -o ~/helios_ws/bags/run2 --preset perception
   # explicit topics
-  ros2 run helios_obstacle_detection bag_tool.py record -o out --topic /rslidar_points --topic /helios/tracks
+  ros2 run helios_obstacle_detection bag_tool.py record -o out \
+      --topic /rslidar_points --topic /helios/tracks
 
   ros2 run helios_obstacle_detection bag_tool.py info ~/helios_ws/bags/run1
   # events written by the event_recorder node (reason, time, coverage, replay command)
@@ -91,7 +92,7 @@ def record(a):
             rclpy.spin_once(node, timeout_sec=0.1)
     except KeyboardInterrupt:
         pass
-    del writer  # closes the bag
+    writer.close()
     for name, n in counts.items():
         print(f'  {name}: {n} messages')
     node.destroy_node()
@@ -188,8 +189,8 @@ def events(a):
     for d, t, reasons, dur, size, flags, bag in rows:
         print(f'{d}\n  time {t} | {reasons} | {dur:.1f} s | {size / 1e6:.1f} MB'
               + (f" | {'; '.join(flags)}" if flags else ''))
-        print(f'  replay: ros2 launch helios_obstacle_detection replay.launch.py bag:={bag} rviz:=true'
-              f' [mode:=recorded]')
+        print('  replay: ros2 launch helios_obstacle_detection replay.launch.py '
+              f'bag:={bag} rviz:=true [mode:=recorded]')
 
 
 def main():

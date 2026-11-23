@@ -1,4 +1,4 @@
-## Bag `/home/yagiz/helios_ws/bags/helios_test_20s`
+## Bag `<bags>/helios_test_20s`
 
 | item | value |
 |---|---|

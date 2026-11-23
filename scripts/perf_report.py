@@ -71,25 +71,25 @@ def main():
             f'| output FPS (mean / min) | {mean([x.output_fps for x in s]):.2f} / '
             f'{min(x.output_fps for x in s):.2f} |',
             f'| sensor stamp rate | {mean([x.sensor_rate_hz for x in s]):.2f} Hz |',
-            f'| CPU, whole node (100 % = 1 core) mean / max | {mean([x.cpu_percent for x in s]):.1f}'
-            f' / {max(x.cpu_percent for x in s):.1f} % |',
+            '| CPU, whole node (100 % = 1 core) mean / max | '
+            f'{mean([x.cpu_percent for x in s]):.1f} / {max(x.cpu_percent for x in s):.1f} % |',
             f'| CPU normalised to all cores | {mean([x.cpu_percent_total for x in s]):.2f} % |',
             f'| RSS | {last.rss_mb:.1f} MB, {last.threads} threads |',
-            f'| host latency rx->publish mean / p95 / max | {last.latency_rx_to_publish_mean_ms:.1f}'
-            f' / {last.latency_rx_to_publish_p95_ms:.1f} / {last.latency_rx_to_publish_max_ms:.1f}'
-            ' ms |',
+            '| host latency rx->publish mean / p95 / max | '
+            f'{last.latency_rx_to_publish_mean_ms:.1f} / {last.latency_rx_to_publish_p95_ms:.1f} / '
+            f'{last.latency_rx_to_publish_max_ms:.1f} ms |',
             f'| clock synced | {last.clock_synced} (offset {last.clock_offset_s:.3f} s) |',
-            f'| stamp age mean / p95 | ' + (f'{last.stamp_age_mean_ms:.1f} / '
-                                            f'{last.stamp_age_p95_ms:.1f} ms' if last.clock_synced
-                                            else 'unobservable (sensor clock not synchronised)')
-            + ' |',
+            '| stamp age mean / p95 | ' + (
+                f'{last.stamp_age_mean_ms:.1f} / {last.stamp_age_p95_ms:.1f} ms'
+                if last.clock_synced else 'unobservable (sensor clock not synchronised)') + ' |',
             f'| delivery jitter p95 | {last.delivery_jitter_p95_ms:.2f} ms |',
             f'| frames rx / processed / superseded / overload | {last.frames_received} / '
             f'{last.frames_processed} / {last.frames_dropped} / {last.overload_frames} |',
             f'| gaps / missed (est.) / time jumps / partial scans | {last.frame_gaps} / '
             f'{last.missed_frames_estimate} / {last.time_jumps} / {last.partial_scans} |',
-            f'| valid return ratio / azimuth coverage | {mean([x.valid_return_ratio for x in s]):.3f}'
-            f' / {mean([x.azimuth_coverage for x in s]):.3f} |',
+            '| valid return ratio / azimuth coverage | '
+            f'{mean([x.valid_return_ratio for x in s]):.3f} / '
+            f'{mean([x.azimuth_coverage for x in s]):.3f} |',
             f'| voxel leaf (adaptive) | {last.voxel_leaf_size:.3f} m |',
             f'| ground | {last.ground_method}: {last.ground_detail} |',
             f'| confirmed tracks per frame / moving | {mean(node.track_counts):.1f} / '

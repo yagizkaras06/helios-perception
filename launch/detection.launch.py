@@ -7,7 +7,8 @@ Examples:
   ros2 launch helios_obstacle_detection detection.launch.py rviz:=true
   ros2 launch helios_obstacle_detection detection.launch.py input_topic:=/other_points
   # record raw LiDAR + every output + diagnostics while running:
-  ros2 launch helios_obstacle_detection detection.launch.py record:=true record_dir:=~/helios_ws/bags/run1
+  ros2 launch helios_obstacle_detection detection.launch.py record:=true \
+      record_dir:=~/helios_ws/bags/run1
   # automatic event recording (5 s before / after CRITICAL risk, data loss, ego loss):
   ros2 launch helios_obstacle_detection detection.launch.py record_events:=true [events_dir:=/path]
 """
@@ -79,7 +80,8 @@ def launch_setup(context):
     # record_events:=true -> detector and event recorder as two nodes in ONE process
     # (perception_node): the LiDAR clouds reach the process once, the recorder subscribes like the
     # detector (reliable) and cannot throttle the driver.
-    record_events = LaunchConfiguration('record_events').perform(context).lower() in ('1', 'true', 'yes')
+    record_events = LaunchConfiguration('record_events').perform(
+        context).lower() in ('1', 'true', 'yes')
     if record_events:
         params = [
             LaunchConfiguration('params_file'),

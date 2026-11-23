@@ -1,5 +1,7 @@
 """Extracts /rslidar_points from a rosbag2 (mcap) into a compressed npz (stamps + xyz per frame)."""
-import sys, numpy as np, rosbag2_py
+import sys
+import numpy as np
+import rosbag2_py
 from rclpy.serialization import deserialize_message
 from sensor_msgs.msg import PointCloud2
 bag, out = sys.argv[1], sys.argv[2]
@@ -19,4 +21,5 @@ while r.has_next():
     clouds.append(xyz.astype(np.float16))
 lens = np.array([len(c) for c in clouds])
 np.savez_compressed(out, stamps=np.array(stamps), lens=lens, xyz=np.concatenate(clouds))
-print(len(stamps), 'frames', lens.mean(), 'pts/frame', [ (f.name,f.offset,f.datatype) for f in m.fields])
+print(len(stamps), 'frames', lens.mean(), 'pts/frame',
+      [(f.name, f.offset, f.datatype) for f in m.fields])

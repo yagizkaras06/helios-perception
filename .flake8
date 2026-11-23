@@ -1,0 +1,5 @@
+[flake8]
+# ROS 2 style: 100 columns; docstring / quote / import-order plugins are not enforced here
+max-line-length = 100
+extend-ignore = D,Q,I
+exclude = build,install,log,.git

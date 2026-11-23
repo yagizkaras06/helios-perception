@@ -1,4 +1,4 @@
-# helios_obstacle_detection (v0.2.0)
+# helios_obstacle_detection (v0.3.0)
 
 RoboSense Helios 32 için ROS 2 Jazzy / C++17 **yalnızca algılama + tahmin** yığını:
 gelişmiş zemin segmentasyonu, menzile uyarlanabilir kümeleme, yönlü 3D kutular, **yalnızca LiDAR
@@ -7,9 +7,24 @@ yön tahmini, belirsizliğe duyarlı **TTC / risk seviyesi**, sensör veri kayb�
 `/diagnostics`, RViz2 görselleştirme, rosbag2 kayıt/oynatma, otomatik testler ve ölçüm araçları.
 
 > **Araç kontrolüne bağlı değildir.** Gaz / fren / direksiyon / `cmd_vel` yayınlamaz, hiçbir
-> denetleyiciyle konuşmaz (launch testi bunu otomatik doğrular). Risk seviyeleri yalnızca algılama
-> çıktısıdır. Kamera, GPS, IMU, tekerlek odometrisi **kullanılmaz** — yalnızca `/rslidar_points`.
-> `rslidar_sdk`, IP adresleri ve ağ yapılandırması değiştirilmedi.
+> denetleyiciyle konuşmaz (launch testi bunu otomatik doğrular). Risk seviyeleri ve çarpışma
+> uyarısı yalnızca algılama / bilgi çıktısıdır; güvenlik işlevi olarak sertifikalı değildir.
+> Kamera, GPS, IMU, tekerlek odometrisi **kullanılmaz** — yalnızca `/rslidar_points`.
+
+**v0.3.0 ile gelenler** (ayrıntı: [CHANGELOG](CHANGELOG.rst), ölçümler: [v0.3 raporu](doc/v030_report.md))
+- Tıkanma farkındalıklı takip: TENTATIVE → CONFIRMED ⇄ OCCLUDED → LOST yaşam döngüsü, yeniden
+  tanıma, kısmi görünüm ölçüm modeli, birleşen kümelerin izlere bölünmesi, genişletilmiş
+  ilişkilendirme maliyeti; iz güdümlü statik arka plan haritası.
+- Daha erken hareket algılama (değişim noktası testi) ve açık belirsizlik durumları
+  (`velocity_status`, `track_confidence`, `relative_motion_only`).
+- Çarpışma uyarısı (`/helios/collision_warning` + RViz yazısı), sade RViz düzeni, yalnızca dinamik
+  nesnelerin çizilmesi.
+- Otomatik olay kaydı (5 s öncesi / sonrası, rosbag2 + `metadata.json`) ve tekrar oynatma.
+
+**Gereksinimler:** Ubuntu 24.04, ROS 2 Jazzy. LiDAR sürücüsü bu depoda **yoktur**:
+[rslidar_sdk](https://github.com/RoboSense-LiDAR/rslidar_sdk) ayrıca kurulur ve
+`sensor_msgs/PointCloud2` yayınlar (varsayılan `/rslidar_points`, `input_topic` ile değiştirilebilir).
+Diğer bağımlılıklar `rosdep install --from-paths src --ignore-src -y` ile kurulur.
 
 ## İçindekiler
 1. [Mimari](#mimari) · 2. [Algoritmalar](#algoritmalar) · 3. [Belirsizlik ve sınırlar](#belirsizlik-ve-sınırlar)
@@ -182,7 +197,7 @@ ros2 run helios_obstacle_detection obstacle_report.py                  # canlı 
 ros2 run helios_obstacle_detection perf_report.py --duration 60 --out ~/perf.md   # FPS/CPU/gecikme raporu
 ros2 topic echo /diagnostics
 
-# testler (6 gtest paketi + ROS launch testi); ROS_DOMAIN_ID ile canlı sistemden yalıtın
+# testler (10 gtest paketi + 2 ROS launch testi); ROS_DOMAIN_ID ile canlı sistemden yalıtın
 ROS_DOMAIN_ID=77 colcon test --packages-select helios_obstacle_detection && colcon test-result --verbose
 
 # çevrimdışı ölçüm
@@ -361,18 +376,8 @@ kare başına ~30 onaylı iz, iz ömrü medyanı 20 s (= kaydın tamamı; RANSAC
 
 ## Bu kurulumda tespit edilenler
 
-1. **LiDAR saati senkron değil.** `use_lidar_clock: true`; başlık damgaları ana bilgisayar saatinden
-   ~311.9 milyon s (≈9.9 yıl) geride (PTP/GPS yok). Takip ve TTC için sorun değil (kare aralıkları
-   0.1000 s ile çok düzenli), ancak mutlak sensör→ana bilgisayar gecikmesi ölçülemez ve damgalar
-   diğer sensörlerle eşleştirilemez. Düğüm bunu `/diagnostics` → `Time synchronization` (WARN) ile
-   bildirir. (Sürücü yapılandırması değiştirilmedi.)
-2. **Sensörün etrafında ~1.7×1.4 m'lik bir yapı** (0.5–1 m mesafede, zeminden ~0.6–1.1 m yükseklikte,
-   muhtemelen üzerinde durduğu masa/platform) kayıttaki karelerin %99'unda `CRITICAL` riske neden
-   oluyor. Bu gerçek bir fiziksel nesne; araçta `filter.self_filter` kutusunu gövdeye göre ayarlayın.
-3. **Zemin `DEGRADED`:** kapalı alanda zemin yalnızca sensörün arkasında küçük bir yayda görünüyor;
-   noktaların >%50'si öncül düzlemle sınıflanıyor. Bu dürüst bir durum bildirimidir, hata değildir.
-4. `ros2 bag` CLI hatası (yukarıda); `bag_tool.py` ile çözüldü.
-5. Eski (v0.1) dedektör `/helios` altında hâlâ çalışıyordu; yedek: `~/helios_ws/backup/`.
+Geliştirme düzeneğine özgü gözlemler (senkron olmayan LiDAR saati, sensörün yanındaki masa,
+iç mekânda zemin durumu, Ethernet / IP notları) [doc/field_notes.md](doc/field_notes.md) dosyasında.
 
 ## Ayar ipuçları (`config/detection.yaml`)
 
