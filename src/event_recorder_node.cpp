@@ -28,6 +28,7 @@
 #include "helios_obstacle_detection/msg/processing_stats.hpp"
 #include "helios_obstacle_detection/msg/tracked_object.hpp"
 #include "helios_obstacle_detection/msg/tracked_object_array.hpp"
+#include "helios_obstacle_detection/node_factories.hpp"
 
 #ifndef HELIOS_VERSION
 #define HELIOS_VERSION "unknown"
@@ -103,8 +104,8 @@ std::uint64_t directorySize(const std::filesystem::path & dir)
 class EventRecorderNode : public rclcpp::Node
 {
 public:
-  EventRecorderNode()
-  : rclcpp::Node("event_recorder"), diagnostics_(this)
+  explicit EventRecorderNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : rclcpp::Node("event_recorder", options), diagnostics_(this)
   {
     // ---- settings shared with the detector (same parameter file) ---------------------------
     input_topic_ = declare_parameter<std::string>("input_topic", "/rslidar_points");
@@ -144,8 +145,13 @@ public:
     auto resolve = [this](const std::string & n) {
         return get_node_topics_interface()->resolve_topic_name(n);
       };
-    rclcpp::QoS raw_qos = rclcpp::QoS(rclcpp::KeepLast(10));
-    if (reliability == "best_effort") {
+    // Raw input: best effort by default. A best-effort reader is compatible with reliable and
+    // best-effort writers and can never throttle the driver (a reliable reader of ~1 MB clouds can
+    // stall the publisher through DDS flow control and starve the detector). "match_detector"
+    // uses the detector's input_reliability instead.
+    const std::string raw_rel = declare_parameter<std::string>("events.raw_reliability", "best_effort");
+    rclcpp::QoS raw_qos = rclcpp::QoS(rclcpp::KeepLast(5));
+    if (raw_rel == "best_effort" || (raw_rel == "match_detector" && reliability == "best_effort")) {
       raw_qos.best_effort();
     } else {
       raw_qos.reliable();
@@ -165,6 +171,8 @@ public:
       add({resolve("collision_warning"), "helios_obstacle_detection/msg/CollisionWarning", out_qos});
     }
 
+    wc.stamp_check_topic = 0;   // raw input
+    wc.stamp_check_rate_hz = declare_parameter<double>("health.expected_rate_hz", 10.0);
     writer_ = std::make_unique<EventWriter>(wc, topics_);
     core_ = std::make_unique<EventRecorderCore>(sc, *writer_);
     monitor_ = std::make_unique<TriggerMonitor>(tc);
@@ -474,6 +482,15 @@ private:
 }  // namespace events
 }  // namespace helios_obstacle_detection
 
+namespace helios_obstacle_detection
+{
+std::shared_ptr<rclcpp::Node> makeEventRecorderNode(const rclcpp::NodeOptions & options)
+{
+  return std::make_shared<events::EventRecorderNode>(options);
+}
+}  // namespace helios_obstacle_detection
+
+#ifndef HELIOS_NO_MAIN
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
@@ -484,3 +501,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
+#endif  // HELIOS_NO_MAIN

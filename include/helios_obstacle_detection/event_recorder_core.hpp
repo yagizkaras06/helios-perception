@@ -168,6 +168,10 @@ struct WriterConfig
 {
   std::size_t queue_max_bytes{256u << 20};
   std::string storage_id{"mcap"};
+  /// Topic index whose header stamps are checked for missing frames (-1: none) and its nominal
+  /// rate; the stamp is read from the CDR bytes (std_msgs/Header first), no deserialisation.
+  int stamp_check_topic{-1};
+  double stamp_check_rate_hz{10.0};
 };
 
 struct WriterStatus

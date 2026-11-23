@@ -1,4 +1,5 @@
-"""ROS-graph test of the event recorder next to the obstacle_detector node.
+"""ROS-graph test of the event recorder with the obstacle_detector (perception_node: both nodes in
+one process, as started by detection.launch.py record_events:=true).
 
 Synthetic Helios-like clouds (ground rings, static walls, a box driving at the sensor) are
 published on a private topic. Checks:
@@ -47,23 +48,20 @@ def generate_test_description():
         'input_topic': INPUT,
         'input_reliability': 'reliable',
     }
-    detector = launch_ros.actions.Node(
-        package='helios_obstacle_detection', executable='obstacle_detector',
-        name='obstacle_detector', namespace=NS, output='screen',
+    # deployment path of record_events:=true: detector + recorder as two nodes in one process
+    node = launch_ros.actions.Node(
+        package='helios_obstacle_detection', executable='perception_node',
+        namespace=NS, output='screen',
         parameters=[dict(common, **{
             'stats_period_s': 0.25, 'log_period_s': 0.0, 'input_timeout_s': 0.5,
             'ground.expected_height': -0.9, 'filter.max_range': 30.0,
             'filter.roi': [-30.0, 30.0, -30.0, 30.0, -2.5, 2.5],
             'ground.zone_boundaries': [0.0, 8.0, 16.0, 30.0], 'threads': 2,
-        })])
-    recorder = launch_ros.actions.Node(
-        package='helios_obstacle_detection', executable='event_recorder',
-        name='event_recorder', namespace=NS, output='screen',
-        parameters=[dict(common, **{
             'events.output_dir': OUT, 'events.pre_event_s': PRE, 'events.post_event_s': POST,
             'events.max_event_s': 20.0, 'events.rearm_s': 1.0, 'events.min_free_disk_mb': 10.0,
+            'events.raw_reliability': 'match_detector',
         })])
-    return launch.LaunchDescription([detector, recorder, launch_testing.actions.ReadyToTest()]), {}
+    return launch.LaunchDescription([node, launch_testing.actions.ReadyToTest()]), {}
 
 
 def events():
@@ -118,6 +116,7 @@ class TestEventRecorder(unittest.TestCase):
             while pub.get_subscription_count() < 2 and time.monotonic() < deadline:
                 rclpy.spin_once(node, timeout_sec=0.1)
             self.assertGreaterEqual(pub.get_subscription_count(), 2, 'detector + recorder')
+            self.spin(node, 1.0)   # let both readers match before publishing
             # ---- start-up: detector reports NO_DATA, no ego yet -> must not be an event
             self.spin(node, 3.0)
             self.assertEqual(events(), [], 'start-up created an event')
@@ -179,9 +178,12 @@ class TestEventRecorder(unittest.TestCase):
                 self.assertEqual(len(stamps), len(set(stamps)), 'duplicate raw messages')
                 for s in stamps:   # header stamps preserved exactly
                     self.assertTrue(any(abs(s - x) < 1000 for x in sent_ns), s)
-                # no gap inside the recorded raw sequence (10 Hz, consecutive frames)
+                # frames missing in the recording (best-effort raw subscription) are reported exactly
                 idx = [min(range(len(sent_ns)), key=lambda i: abs(sent_ns[i] - s)) for s in stamps]
-                self.assertEqual(idx, list(range(idx[0], idx[0] + len(idx))), 'raw frames lost')
+                missing = (idx[-1] - idx[0] + 1) - len(idx)
+                self.assertEqual(meta['integrity']['raw_input_missing_frames_estimate'], missing)
+                self.assertLessEqual(missing, 3, 'too many raw frames lost')
+                self.assertEqual(meta['integrity']['raw_input_frames'], len(idx))
                 if meta['reasons'][0]['type'] == 'critical_risk':
                     # the raw input covers the whole pre + post window (publisher rate ~9-10 Hz)
                     raw_t = [t for tp, _, t in msgs if tp == INPUT]

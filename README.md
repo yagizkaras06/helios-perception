@@ -296,6 +296,7 @@ kilit altında yapılır (kayıp / çift kayıt yok, yazıcı sürekliliği doğ
 | `max_event_disk_mb` | 1024 | olay başına disk sınırı (aşılırsa olay kesilir, işaretlenir) |
 | `max_total_disk_mb` | 4096 | klasör toplamı; aşılırsa yeni olay kaydedilmez |
 | `min_free_disk_mb` | 1024 | diskte bu kadar boş yer kalmazsa yeni olay kaydedilmez |
+| `raw_reliability` | `best_effort` | kaydedicinin ham LiDAR aboneliği. `best_effort` sürücüyü asla yavaşlatmaz (canlıda `reliable` abonelik sürücüyü tıkayıp 1–2 s'lik veri kesintilerine yol açtı); aşırı yükte kayda birkaç kare eksik düşebilir. `match_detector` = dedektörün `input_reliability`'si |
 
 Bir olay ≈ 10 s × ~9.5 MB/s ≈ **100 MB** (ham bulut baskın). Durum `/diagnostics`'te
 "event_recorder: Event recorder" başlığıyla görünür (tampon süresi / boyutu, kuyruk, düşen mesajlar,

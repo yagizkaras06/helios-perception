@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -181,6 +182,8 @@ struct EventWriter::Current
   std::uint64_t first_seq{0}, last_seq{0}, seq_gaps{0}, out_of_order{0};
   std::uint64_t written{0}, bytes_written{0}, skipped_truncated{0};
   std::int64_t first_steady{0}, last_steady{0};
+  double last_stamp{-1.0};
+  std::uint64_t stamp_missing{0}, stamp_backwards{0}, stamp_checked{0};
   bool truncated{false};
   bool failed{false};
   std::string error;
@@ -358,6 +361,28 @@ void EventWriter::doWrite(const RecordedMessage & m)
     ++c.skipped_truncated;
     return;
   }
+  if (m.topic == config_.stamp_check_topic && m.data &&
+    m.data->get_rcl_serialized_message().buffer_length >= 12)
+  {
+    // CDR: 4-byte encapsulation header, then header.stamp.sec (int32), .nanosec (uint32)
+    const auto * b = m.data->get_rcl_serialized_message().buffer;
+    std::int32_t sec;
+    std::uint32_t nsec;
+    std::memcpy(&sec, b + 4, 4);
+    std::memcpy(&nsec, b + 8, 4);
+    const double stamp = sec + nsec * 1e-9;
+    const double period = 1.0 / config_.stamp_check_rate_hz;
+    if (c.last_stamp >= 0.0) {
+      const double dt = stamp - c.last_stamp;
+      if (dt < -0.5 * period) {
+        ++c.stamp_backwards;
+      } else if (dt > 1.5 * period) {
+        c.stamp_missing += static_cast<std::uint64_t>(std::llround(dt / period)) - 1;
+      }
+    }
+    c.last_stamp = stamp;
+    ++c.stamp_checked;
+  }
   const auto & topic = topics_.at(static_cast<std::size_t>(m.topic));
   // monotonic bag time: event wall start + steady offset (immune to wall-clock jumps)
   const std::int64_t ts = c.info->start_system_ns + (m.steady_ns - c.info->start_steady_ns);
@@ -434,6 +459,13 @@ void EventWriter::doClose(const std::shared_ptr<EventInfo> & info)
   in["messages_skipped_after_truncation"] = c.skipped_truncated;
   in["disk_budget_bytes"] = e.disk_budget_bytes;
   in["write_error"] = c.failed ? nlohmann::json(c.error) : nlohmann::json(nullptr);
+  if (config_.stamp_check_topic >= 0) {
+    // frames missing in the recorded raw input (sensor / network gaps or, with a best-effort
+    // subscription, frames the recorder did not receive), from consecutive header stamps
+    in["raw_input_frames"] = c.stamp_checked;
+    in["raw_input_missing_frames_estimate"] = c.stamp_missing;
+    in["raw_input_stamp_backwards"] = c.stamp_backwards;
+  }
   j["integrity"] = in;
   j["time_jumps"] = nlohmann::json::array();
   for (const auto & jr : e.jumps) {

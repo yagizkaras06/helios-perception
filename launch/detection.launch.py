@@ -76,28 +76,33 @@ def launch_setup(context):
         condition=IfCondition(LaunchConfiguration('record')),
         output='screen',
     )
-    recorder_params = [
-        LaunchConfiguration('params_file'),
-        {
-            'input_topic': LaunchConfiguration('input_topic'),
-            'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'events.detector_node': 'obstacle_detector',
-        },
-    ]
-    events_dir = LaunchConfiguration('events_dir').perform(context)
-    if events_dir:
-        recorder_params.append({'events.output_dir': events_dir})
-    recorder = Node(
-        package='helios_obstacle_detection',
-        executable='event_recorder',
-        name='event_recorder',
-        namespace=ns,
-        output='screen',
-        emulate_tty=True,
-        parameters=recorder_params,
-        condition=IfCondition(LaunchConfiguration('record_events')),
-    )
-    return [detector, rviz, record, recorder]
+    # record_events:=true -> detector and event recorder as two nodes in ONE process
+    # (perception_node): the LiDAR clouds reach the process once, the recorder subscribes like the
+    # detector (reliable) and cannot throttle the driver.
+    record_events = LaunchConfiguration('record_events').perform(context).lower() in ('1', 'true', 'yes')
+    if record_events:
+        params = [
+            LaunchConfiguration('params_file'),
+            {
+                'input_topic': LaunchConfiguration('input_topic'),
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
+                'events.detector_node': 'obstacle_detector',
+                'events.raw_reliability': 'match_detector',
+            },
+        ]
+        events_dir = LaunchConfiguration('events_dir').perform(context)
+        if events_dir:
+            params.append({'events.output_dir': events_dir})
+        detector = Node(
+            package='helios_obstacle_detection',
+            executable='perception_node',
+            namespace=ns,
+            output='screen',
+            emulate_tty=True,
+            parameters=params,
+            arguments=['--ros-args', '--log-level', LaunchConfiguration('log_level')],
+        )
+    return [detector, rviz, record]
 
 
 def generate_launch_description():

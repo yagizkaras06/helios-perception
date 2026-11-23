@@ -128,6 +128,22 @@ target_link_libraries(event_recorder
   ${std_msgs_TARGETS}
   "${${PROJECT_NAME}_cpp_typesupport}")
 
+# detector + event recorder in one process (record_events:=true)
+add_executable(perception_node
+  src/perception_with_recorder.cpp src/detection_node.cpp src/event_recorder_node.cpp)
+target_compile_definitions(perception_node PRIVATE HELIOS_NO_MAIN HELIOS_VERSION="${HELIOS_VERSION}")
+target_link_libraries(perception_node
+  helios_obstacle_core
+  helios_event_recorder
+  ${diagnostic_updater_TARGETS}
+  ${diagnostic_msgs_TARGETS}
+  ${pcl_conversions_TARGETS}
+  ${std_msgs_TARGETS}
+  "${${PROJECT_NAME}_cpp_typesupport}")
+if(NOT pcl_conversions_TARGETS)
+  target_include_directories(perception_node PRIVATE ${pcl_conversions_INCLUDE_DIRS})
+endif()
+
 # ---------------------------------------------------------------- offline benchmark
 add_executable(helios_benchmark src/benchmark_main.cpp)
 target_link_libraries(helios_benchmark
@@ -137,7 +153,7 @@ target_link_libraries(helios_benchmark
 )
 
 install(TARGETS helios_obstacle_core helios_sim obstacle_detector helios_benchmark
-  helios_event_recorder event_recorder
+  helios_event_recorder event_recorder perception_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

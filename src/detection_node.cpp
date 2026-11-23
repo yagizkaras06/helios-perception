@@ -36,6 +36,7 @@
 #include "helios_obstacle_detection/msg/processing_stats.hpp"
 #include "helios_obstacle_detection/msg/tracked_object_array.hpp"
 #include "helios_obstacle_detection/msg/collision_warning.hpp"
+#include "helios_obstacle_detection/node_factories.hpp"
 #include "helios_obstacle_detection/perception_pipeline.hpp"
 #include "helios_obstacle_detection/performance_monitor.hpp"
 #include "helios_obstacle_detection/resource_monitor.hpp"
@@ -1299,6 +1300,15 @@ private:
 
 }  // namespace helios_obstacle_detection
 
+namespace helios_obstacle_detection
+{
+std::shared_ptr<rclcpp::Node> makeDetectorNode(const rclcpp::NodeOptions & options)
+{
+  return std::make_shared<ObstacleDetectionNode>(options);
+}
+}  // namespace helios_obstacle_detection
+
+#ifndef HELIOS_NO_MAIN
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
@@ -1314,3 +1324,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return rc;
 }
+#endif  // HELIOS_NO_MAIN

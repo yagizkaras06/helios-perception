@@ -257,6 +257,8 @@
       max_total_disk_mb: 4096.0      # whole events folder; no new events beyond (diagnostics)
       min_free_disk_mb: 1024.0
       storage_id: mcap
+      raw_reliability: best_effort   # raw LiDAR subscription of the recorder: best_effort never
+                                     # throttles the driver (reliable did: 1-2 s data gaps)
 
     # ---------------------------------------------------------------- RViz2
     visualization:
