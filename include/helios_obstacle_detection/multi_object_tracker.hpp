@@ -155,6 +155,7 @@ struct TrackOutput
   float motion_confidence{0.F};        // evidence strength of the motion state [0, 1] (heuristic)
   bool ever_moved{false};
   float time_since_moving_s{std::numeric_limits<float>::infinity()};  // since last MOVING
+  float max_displacement{0.F};         // [m] largest distance from the first observed position
   bool velocity_reliable{false};       // == (velocity_status == kReliable)
   bool large_structure{false};
   bool background{false};              // belongs to the learned static background
@@ -276,6 +277,8 @@ private:
     double last_meas_sigma{0.0};
     double last_moving{-1.0};           // stamp of the last frame classified MOVING
     double last_fit{-1.0};              // stamp of the last valid window regression
+    Eigen::Vector2d origin{Eigen::Vector2d::Zero()};  // first measured position (odom)
+    double max_displacement{0.0};
     float onset_speed{0.F};             // speed of the change-point fit (diagnostics)        // largest axis sigma of the last measurement
   };
 

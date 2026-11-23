@@ -434,6 +434,8 @@ private:
     viz_.show_static = b("visualization.show_static", false);
     viz_.show_unknown = b("visualization.show_unknown", true);
     viz_.only_dynamic_after_learning = b("visualization.only_dynamic_after_learning", true);
+    viz_.min_moving_displacement = f("visualization.min_moving_displacement", 0.5);
+    viz_.min_dynamic_displacement = f("visualization.min_dynamic_displacement", 1.0);
     viz_.show_trails = b("visualization.show_trails", true);
     viz_.show_uncertainty = b("visualization.show_uncertainty", true);
     viz_.show_prediction = b("visualization.show_prediction", true);
@@ -665,6 +667,7 @@ private:
       m.track_confidence = t.confidence;
       m.motion_confidence = t.motion_confidence;
       m.time_since_moving_s = t.time_since_moving_s;
+      m.max_displacement = t.max_displacement;
       m.ever_moved = t.ever_moved;
       m.velocity_reliable = t.velocity_reliable;
       m.large_structure = t.large_structure;

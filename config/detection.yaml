@@ -225,6 +225,8 @@
       show_unknown: true             # RViz: draw UNKNOWN (= dynamic, not moving right now)
       only_dynamic_after_learning: true  # first static_time_s: draw all; then only objects that
                                          # are MOVING or moved before (statics stay in /tracks + risk)
+      min_moving_displacement: 0.5   # [m] MOVING objects drawn once this far from where first seen
+      min_dynamic_displacement: 1.0  # [m] stopped objects (moved before) drawn if they went this far
       show_trails: true
       show_uncertainty: true         # 2-sigma position ellipse
       show_prediction: true          # constant relative-velocity path

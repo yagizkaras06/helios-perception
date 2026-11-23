@@ -49,6 +49,7 @@ bool relative_motion_only     # ego motion unknown: only motion relative to the 
 float32 track_confidence      # existence confidence [0,1] (heuristic, not a probability)
 float32 motion_confidence     # strength of the motion-state evidence [0,1] (heuristic)
 float32 time_since_moving_s   # since the last MOVING classification, +inf if never
+float32 max_displacement      # [m] largest distance from where the object was first seen
 bool ever_moved               # was MOVING at some point (e.g. pedestrian that stopped)
 bool velocity_reliable        # == (velocity_status == VELOCITY_RELIABLE)
 bool large_structure          # wall / building-like; box centre and velocity unreliable

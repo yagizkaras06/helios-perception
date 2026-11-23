@@ -229,10 +229,14 @@ MarkerArray buildTrackMarkers(
     if (t.state == TrackState::kTentative && !cfg.show_tentative) {
       continue;
     }
-    if (cfg.only_dynamic_after_learning && !frame.background_learning &&
-      !(t.motion == MotionState::kMoving || t.ever_moved))
-    {
-      continue;   // static scene learned: draw dynamic objects only
+    if (cfg.only_dynamic_after_learning && !frame.background_learning) {
+      // static scene learned: draw only objects that really went somewhere
+      const bool moving_now = t.motion == MotionState::kMoving &&
+        t.max_displacement >= cfg.min_moving_displacement;
+      const bool moved_before = t.ever_moved && t.max_displacement >= cfg.min_dynamic_displacement;
+      if (!(moving_now || moved_before)) {
+        continue;
+      }
     }
     const RiskAssessment & r = frame.risks[i];
     const bool tentative = t.state == TrackState::kTentative;

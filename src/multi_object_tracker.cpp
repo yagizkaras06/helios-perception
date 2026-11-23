@@ -1018,6 +1018,7 @@ void MultiObjectTracker::update(
       ++associated;
       t.kf.update(m.z, Rj);
       t.last_meas_sigma = m.max_sigma;
+      t.max_displacement = std::max(t.max_displacement, (t.kf.position() - t.origin).norm());
       // motion evidence: consistent boxes count fully; partial / shape-changed ones only with a
       // still sensor (while driving the changing viewpoint alone changes the boxes)
       // partial views count as consistent only with a still sensor (viewpoint changes otherwise)
@@ -1121,6 +1122,7 @@ void MultiObjectTracker::update(
       next_id_ = 1;
     }
     t.kf.init(z[j], R[j], config_.init_velocity_sigma);
+    t.origin = z[j];
     t.first_stamp = stamp;
     t.last_update = stamp;
     t.hits = 1;
@@ -1184,6 +1186,7 @@ void MultiObjectTracker::update(
     if (t.last_moving >= 0.0) {
       o.time_since_moving_s = static_cast<float>(stamp - t.last_moving);
     }
+    o.max_displacement = static_cast<float>(t.max_displacement);
     o.large_structure = t.large_structure;
     o.updated = t.detection_index >= 0;
     o.detection_index = t.detection_index;

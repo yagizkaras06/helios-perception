@@ -60,7 +60,7 @@ Visualization Manager:
       Value: true
     - Class: rviz_default_plugins/PointCloud2
       Name: 3a Ground
-      Enabled: true
+      Enabled: false
       Topic:
         Value: /helios/ground_points
         Reliability Policy: Reliable
@@ -73,7 +73,7 @@ Visualization Manager:
       Size (Pixels): 2
       Alpha: 0.6
       Decay Time: 0
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/PointCloud2
       Name: 3b Obstacle points
       Enabled: false
@@ -92,7 +92,7 @@ Visualization Manager:
       Value: false
     - Class: rviz_default_plugins/PointCloud2
       Name: 4 Clusters
-      Enabled: true
+      Enabled: false
       Topic:
         Value: /helios/obstacle_clusters
         Reliability Policy: Reliable
@@ -104,7 +104,7 @@ Visualization Manager:
       Size (Pixels): 4
       Alpha: 1
       Decay Time: 0
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/MarkerArray
       Name: 8 Tracks (id, motion, speed, heading, TTC, risk)
       Enabled: true

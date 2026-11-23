@@ -39,6 +39,11 @@ struct TrackVizConfig
   // that only dynamic objects (MOVING now or moved at some point). Visualisation only: all tracks
   // stay in /tracks and in the risk assessment.
   bool only_dynamic_after_learning{true};
+  // ... and only objects that really went somewhere (removes static clutter whose box centre
+  // jitters): currently MOVING and >= min_moving_displacement from where first seen, or moved
+  // before and >= min_dynamic_displacement
+  float min_moving_displacement{0.5F};   // [m]
+  float min_dynamic_displacement{1.0F};  // [m]
   bool show_trails{true};
   bool show_uncertainty{true};
   bool show_prediction{true};
