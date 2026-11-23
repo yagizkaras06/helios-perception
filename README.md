@@ -225,8 +225,17 @@ ros2 launch helios_obstacle_detection replay.launch.py bag:=$HOME/helios_ws/bags
 
 Kritik bir olay olduğunda olayın **5 s öncesini ve 5 s sonrasını** kaydeder: ham LiDAR + algılama
 çıktıları + dedektörün diagnostics mesajları, rosbag2 (MCAP) olarak ve okunabilir `metadata.json`
-ile. Ayrı bir ROS düğümüdür (`event_recorder`); dedektörü yavaşlatmaz, yazma hatasında dedektör
-çalışmaya devam eder. Varsayılan olarak **kapalıdır**.
+ile. Ayrı bir ROS düğümüdür (`event_recorder`); yazma hatasında dedektör çalışmaya devam eder.
+Varsayılan olarak **kapalıdır**.
+
+`record_events:=true` ile dedektör ve kaydedici **aynı süreçte iki ayrı düğüm** olarak başlar
+(`perception_node`). Böylece ~1 MB'lık LiDAR bulutları sürece bir kez gelir. Ayrı süreçte çalışan
+bir kaydedici bu makinede sorun çıkardı: reliable abonelik sürücüyü tıkayıp 1–2 s'lik veri
+kesintilerine yol açtı, best-effort abonelik ise kareleri kaybetti. Tek süreçte 3 dakikalık canlı
+ölçüm: veri kesintisi yok, giriş ≈10 Hz, CPU %36 (dedektör + kaydedici, tek çekirdek), RAM ~165 MB.
+Başka bir makinedeki dedektörü kaydetmek için tek başına `ros2 run helios_obstacle_detection
+event_recorder` da kullanılabilir (ham abonelik varsayılan olarak best-effort; eksik kareler
+`metadata.json`'da `raw_input_missing_frames_estimate` olarak sayılır).
 
 ```bash
 # başlatma (dedektörle aynı namespace; topic adları ve giriş QoS'u aynı detection.yaml'dan)
