@@ -449,8 +449,9 @@ private:
     viz_.only_dynamic_after_learning = b("visualization.only_dynamic_after_learning", true);
     viz_.min_moving_displacement = f("visualization.min_moving_displacement", 0.5);
     viz_.min_dynamic_displacement = f("visualization.min_dynamic_displacement", 1.0);
+    viz_.show_range_rings = b("visualization.show_range_rings", true);
     viz_.show_trails = b("visualization.show_trails", true);
-    viz_.show_uncertainty = b("visualization.show_uncertainty", true);
+    viz_.show_uncertainty = b("visualization.show_uncertainty", false);
     viz_.show_prediction = b("visualization.show_prediction", true);
     viz_.arrow_time_s = f("visualization.arrow_time_s", 1.0);
     viz_.prediction_horizon_s = f("visualization.prediction_horizon_s", 3.0);

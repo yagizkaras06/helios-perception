@@ -244,7 +244,8 @@
       min_moving_displacement: 0.5   # [m] MOVING objects drawn once this far from where first seen
       min_dynamic_displacement: 1.0  # [m] stopped objects (moved before) drawn if they went this far
       show_trails: true
-      show_uncertainty: true         # 2-sigma position ellipse
+      show_uncertainty: false        # 2-sigma position ellipse (off: cleaner screen)
+      show_range_rings: true         # 5 / 10 / 15 / 20 m distance circles
       show_prediction: true          # constant relative-velocity path
       arrow_time_s: 1.0              # velocity arrow = speed * 1 s
       prediction_horizon_s: 3.0

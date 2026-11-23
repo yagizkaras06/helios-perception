@@ -43,6 +43,7 @@ struct TrackVizConfig
   // jitters): currently MOVING and >= min_moving_displacement from where first seen, or moved
   // before and >= min_dynamic_displacement
   float min_moving_displacement{0.5F};   // [m]
+  bool show_range_rings{true};           // 5 / 10 / 15 / 20 m circles around the sensor
   float min_dynamic_displacement{1.0F};  // [m]
   bool show_trails{true};
   bool show_uncertainty{true};

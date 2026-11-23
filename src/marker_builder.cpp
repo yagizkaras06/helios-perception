@@ -368,20 +368,64 @@ MarkerArray buildTrackMarkers(
     }
   }
 
-  // ---- collision warning: big banner above the sensor, threat line, ego circle colour --------
+  // ---- range rings (distance reference) -------------------------------------------------------
+  if (cfg.show_range_rings) {
+    int rid = 0;
+    for (const float rr : {5.F, 10.F, 15.F, 20.F}) {
+      Marker ring = makeMarker(header, "range_rings", rid, Marker::LINE_STRIP, lifetime);
+      ring.scale.x = 0.03;
+      setColor(ring, Rgb{0.55F, 0.6F, 0.7F}, 0.35F);
+      for (int k = 0; k <= 96; ++k) {
+        const float a = static_cast<float>(2.0 * M_PI * k / 96.0);
+        ring.points.push_back(toPoint(rr * std::cos(a), rr * std::sin(a), -0.85F));
+      }
+      arr.markers.push_back(std::move(ring));
+      Marker lbl = makeMarker(header, "range_rings", 100 + rid, Marker::TEXT_VIEW_FACING, lifetime);
+      lbl.pose.position = toPoint(rr * 0.7071F, -rr * 0.7071F, -0.8F);   // front-right diagonal
+      lbl.scale.z = 0.45;
+      setColor(lbl, Rgb{0.65F, 0.7F, 0.8F}, 0.8F);
+      char t[16];
+      std::snprintf(t, sizeof(t), "%.0f m", rr);
+      lbl.text = t;
+      arr.markers.push_back(std::move(lbl));
+      ++rid;
+    }
+  }
+
+  // ---- collision warning: big banner behind the sensor, threat line, ego circle colour --------
   const CollisionWarning & w = frame.warning;
   const Rgb warn_col = w.level == WarningLevel::kWarning ? Rgb{1.F, 0.1F, 0.1F} :
     (w.level == WarningLevel::kCaution ? Rgb{1.F, 0.6F, 0.05F} : Rgb{0.2F, 0.9F, 0.3F});
   {
+    // two lines behind the sensor: big headline + details (the full text is in w.text)
+    std::string head = "CARPISMA YOK", detail;
+    if (w.level != WarningLevel::kClear) {
+      const auto two = w.text.find("  ");
+      head = w.level == WarningLevel::kWarning ? "!! CARPISMA RISKI VAR !!" : "DIKKAT: YAKLASAN NESNE";
+      detail = two == std::string::npos ? std::string() : w.text.substr(two + 2);
+    }
     Marker banner = makeMarker(header, "collision_warning", 0, Marker::TEXT_VIEW_FACING, lifetime);
-    banner.pose.position = toPoint(0.F, 0.F, 3.2F);
-    banner.scale.z = w.level == WarningLevel::kClear ? 0.35 : 0.6;
+    banner.pose.position = toPoint(-2.6F, 0.F, 2.0F);
+    banner.scale.z = w.level == WarningLevel::kWarning ? 1.1 :
+      (w.level == WarningLevel::kCaution ? 0.9 : 0.55);
     setColor(banner, warn_col, 1.F);
-    banner.text = w.text.empty() ? std::string("CARPISMA YOK") : w.text;
+    banner.text = head;
     arr.markers.push_back(std::move(banner));
+    if (!detail.empty()) {   // never publish empty / blank text: RViz (Ogre) aborts on it
+      Marker det = makeMarker(header, "collision_warning", 3, Marker::TEXT_VIEW_FACING, lifetime);
+      det.pose.position = toPoint(-3.8F, 0.F, 2.0F);
+      det.scale.z = 0.45;
+      setColor(det, warn_col, 1.F);
+      det.text = detail;
+      arr.markers.push_back(std::move(det));
+    }
   }
+  const auto finite2 = [](const Eigen::Vector2f & v) {return std::isfinite(v.x()) && std::isfinite(v.y());};
   if (w.level != WarningLevel::kClear && w.track_index >= 0 &&
-    static_cast<std::size_t>(w.track_index) < frame.tracks.size())
+    static_cast<std::size_t>(w.track_index) < frame.tracks.size() &&
+    finite2(frame.tracks[static_cast<std::size_t>(w.track_index)].center.head<2>()) &&
+    finite2(frame.tracks[static_cast<std::size_t>(w.track_index)].closest_point.head<2>()) &&
+    finite2(frame.tracks[static_cast<std::size_t>(w.track_index)].relative_velocity))
   {
     const TrackOutput & tt = frame.tracks[static_cast<std::size_t>(w.track_index)];
     // line object -> sensor and the predicted relative path up to the closest approach
@@ -435,7 +479,7 @@ MarkerArray buildTrackMarkers(
 
   // HUD
   Marker hud = makeMarker(header, "status_hud", 0, Marker::TEXT_VIEW_FACING, lifetime);
-  hud.pose.position = toPoint(0.F, 0.F, 2.2F);
+  hud.pose.position = toPoint(-4.9F, 0.F, 2.0F);   // below the warning banner
   hud.scale.z = 0.3;
   const Rgb hud_col = frame.max_risk >= RiskLevel::kMedium ? colorForRisk(frame.max_risk) :
     (ego.state == EgoState::kUnknown || frame.ground.status == GroundStatus::kFailed ?

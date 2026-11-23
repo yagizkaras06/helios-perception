@@ -2,147 +2,151 @@ Panels:
   - Class: rviz_common/Displays
     Name: Displays
     Property Tree Widget:
-      Splitter Ratio: 0.55
-    Tree Height: 600
+      Splitter Ratio: 0.6
+    Tree Height: 520
+  - Class: rviz_common/Views
+    Name: Views
+    Splitter Ratio: 0.5
 Visualization Manager:
   Class: ""
   Displays:
-    - Class: rviz_default_plugins/Grid
-      Name: Grid
+    # ------------------------------------------------------------------ Ortam
+    - Class: rviz_common/Group
+      Name: Ortam
       Enabled: true
-      Cell Size: 1
-      Plane Cell Count: 40
-      Color: 100; 100; 100
-      Alpha: 0.4
-      Offset:
-        X: 0
-        Y: 0
-        Z: -0.9
-      Reference Frame: <Fixed Frame>
       Value: true
-    - Class: rviz_default_plugins/Axes
-      Name: LiDAR origin
+      Displays:
+        - Class: rviz_default_plugins/Grid
+          Name: Izgara (1 m)
+          Enabled: true
+          Cell Size: 1
+          Plane Cell Count: 60
+          Color: 90; 90; 100
+          Alpha: 0.25
+          Line Style:
+            Line Width: 0.03
+            Value: Lines
+          Offset:
+            X: 0
+            Y: 0
+            Z: -0.9
+          Reference Frame: <Fixed Frame>
+          Value: true
+        - Class: rviz_default_plugins/Axes
+          Name: LiDAR (x ileri, y sol)
+          Enabled: true
+          Length: 0.8
+          Radius: 0.04
+          Reference Frame: <Fixed Frame>
+          Value: true
+        - Class: rviz_default_plugins/PointCloud2
+          Name: Nokta bulutu
+          Enabled: true
+          Topic:
+            Value: /helios/filtered_points
+            Reliability Policy: Best Effort
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Depth: 1
+          Color Transformer: FlatColor
+          Color: 150; 155; 165
+          Style: Points
+          Size (Pixels): 2
+          Alpha: 0.7
+          Decay Time: 0
+          Value: true
+    # ------------------------------------------------------------------ Algilama
+    - Class: rviz_common/Group
+      Name: Algilama
       Enabled: true
-      Length: 0.6
-      Radius: 0.03
-      Reference Frame: <Fixed Frame>
       Value: true
-    - Class: rviz_default_plugins/PointCloud2
-      Name: 1 Raw (rslidar_sdk)
+      Displays:
+        - Class: rviz_default_plugins/MarkerArray
+          Name: Dinamik nesneler + carpisma uyarisi
+          Enabled: true
+          Topic:
+            Value: /helios/track_markers
+            Reliability Policy: Reliable
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Depth: 1
+          Namespaces:
+            collision_warning: true
+            status_hud: true
+            range_rings: true
+            ego: true
+            track_boxes: true
+            track_labels: true
+            track_velocity: true
+            track_prediction: true
+            track_trails: true
+            track_uncertainty: true
+          Value: true
+    # ------------------------------------------------------------------ Hata ayiklama (kapali)
+    - Class: rviz_common/Group
+      Name: Hata ayiklama
       Enabled: false
-      Topic:
-        Value: /rslidar_points
-        Reliability Policy: Reliable
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Depth: 1
-      Color Transformer: Intensity
-      Style: Points
-      Size (Pixels): 1
-      Alpha: 0.5
-      Decay Time: 0
       Value: false
-    - Class: rviz_default_plugins/PointCloud2
-      Name: 2 Filtered (ROI + voxel)
-      Enabled: true
-      Topic:
-        Value: /helios/filtered_points
-        Reliability Policy: Reliable
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Depth: 1
-      Color Transformer: FlatColor
-      Color: 170; 170; 170
-      Style: Points
-      Size (Pixels): 2
-      Alpha: 0.35
-      Decay Time: 0
-      Value: true
-    - Class: rviz_default_plugins/PointCloud2
-      Name: 3a Ground
-      Enabled: false
-      Topic:
-        Value: /helios/ground_points
-        Reliability Policy: Reliable
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Depth: 1
-      Color Transformer: FlatColor
-      Color: 40; 160; 60
-      Style: Points
-      Size (Pixels): 2
-      Alpha: 0.6
-      Decay Time: 0
-      Value: false
-    - Class: rviz_default_plugins/PointCloud2
-      Name: 3b Obstacle points
-      Enabled: false
-      Topic:
-        Value: /helios/obstacle_points
-        Reliability Policy: Reliable
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Depth: 1
-      Color Transformer: FlatColor
-      Color: 255; 255; 255
-      Style: Points
-      Size (Pixels): 3
-      Alpha: 1
-      Decay Time: 0
-      Value: false
-    - Class: rviz_default_plugins/PointCloud2
-      Name: 4 Clusters
-      Enabled: false
-      Topic:
-        Value: /helios/obstacle_clusters
-        Reliability Policy: Reliable
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Depth: 1
-      Color Transformer: RGB8
-      Style: Points
-      Size (Pixels): 4
-      Alpha: 1
-      Decay Time: 0
-      Value: false
-    - Class: rviz_default_plugins/MarkerArray
-      Name: 8 Tracks (id, motion, speed, heading, TTC, risk)
-      Enabled: true
-      Topic:
-        Value: /helios/track_markers
-        Reliability Policy: Reliable
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Depth: 1
-      Namespaces:
-        track_boxes: true
-        track_labels: true
-        track_velocity: true
-        track_prediction: true
-        track_uncertainty: true
-        track_trails: true
-        ego: true
-        status_hud: true
-        collision_warning: true
-      Value: true
-    - Class: rviz_default_plugins/MarkerArray
-      Name: 5-7 Per-frame detections (AABB / centers / distances)
-      Enabled: false
-      Topic:
-        Value: /helios/obstacle_markers
-        Reliability Policy: Reliable
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Depth: 1
-      Namespaces:
-        boxes: true
-        centers: true
-        distances: true
-        status: true
-      Value: false
+      Displays:
+        - Class: rviz_default_plugins/PointCloud2
+          Name: Ham LiDAR (rslidar_sdk)
+          Enabled: false
+          Topic:
+            Value: /rslidar_points
+            Reliability Policy: Best Effort
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Depth: 1
+          Color Transformer: Intensity
+          Style: Points
+          Size (Pixels): 1
+          Alpha: 1
+          Decay Time: 0
+          Value: false
+        - Class: rviz_default_plugins/PointCloud2
+          Name: Zemin
+          Enabled: true
+          Topic:
+            Value: /helios/ground_points
+            Reliability Policy: Best Effort
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Depth: 1
+          Color Transformer: FlatColor
+          Color: 40; 160; 60
+          Style: Points
+          Size (Pixels): 2
+          Alpha: 1
+          Decay Time: 0
+          Value: true
+        - Class: rviz_default_plugins/PointCloud2
+          Name: Kumeler (renkli)
+          Enabled: true
+          Topic:
+            Value: /helios/obstacle_clusters
+            Reliability Policy: Best Effort
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Depth: 1
+          Color Transformer: RGB8
+          Style: Points
+          Size (Pixels): 4
+          Alpha: 1
+          Decay Time: 0
+          Value: true
+        - Class: rviz_default_plugins/MarkerArray
+          Name: Ham tespitler (her kare)
+          Enabled: true
+          Topic:
+            Value: /helios/obstacle_markers
+            Reliability Policy: Reliable
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Depth: 1
+          Value: true
   Enabled: true
   Global Options:
-    Background Color: 30; 30; 35
+    Background Color: 22; 24; 30
     Fixed Frame: rslidar
     Frame Rate: 30
   Name: root
@@ -154,17 +158,40 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Class: rviz_default_plugins/Orbit
-      Distance: 25
-      Focal Point:
-        X: 4
-        Y: 0
-        Z: 0
-      Pitch: 0.75
-      Yaw: 3.4
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Kusbakisi
+      Angle: 0
+      Scale: 30
+      X: 6
+      Y: 0
+      Near Clip Distance: 0.01
       Target Frame: <Fixed Frame>
-      Value: Orbit (rviz)
-    Saved: ~
+      Value: TopDownOrtho (rviz_default_plugins)
+    Saved:
+      - Class: rviz_default_plugins/TopDownOrtho
+        Name: Kusbakisi
+        Angle: 0
+        Scale: 30
+        X: 6
+        Y: 0
+        Near Clip Distance: 0.01
+        Target Frame: <Fixed Frame>
+        Value: TopDownOrtho (rviz_default_plugins)
+      - Class: rviz_default_plugins/Orbit
+        Name: 3B arka-ust
+        Distance: 22
+        Focal Point:
+          X: 5
+          Y: 0
+          Z: 0
+        Pitch: 0.7
+        Yaw: 3.14
+        Target Frame: <Fixed Frame>
+        Value: Orbit (rviz_default_plugins)
 Window Geometry:
-  Height: 900
-  Width: 1500
+  Height: 950
+  Width: 1600
+  Displays:
+    collapsed: false
+  Views:
+    collapsed: true

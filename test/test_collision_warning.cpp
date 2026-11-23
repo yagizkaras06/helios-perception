@@ -149,3 +149,31 @@ TEST(CollisionWarning, SimulatedApproachWarnsBeforeImpact)
   EXPECT_LT(first_caution, first_warning);
   EXPECT_LT(first_warning, 9.5 - 2.0);   // at least 2 s before contact
 }
+
+// RViz (Ogre MovableText) aborts on blank text: no TEXT marker may ever be empty / whitespace,
+// in any warning state; line markers must be finite.
+#include "helios_obstacle_detection/marker_builder.hpp"
+
+TEST(CollisionWarning, MarkersNeverCarryBlankTextOrNaN)
+{
+  CollisionWarningFilter f = makeFilter();
+  for (int level = 0; level < 3; ++level) {
+    FrameOutput fr;
+    fr.tracks = {track(level == 0 ? 6.F : 2.5F, 0.F, level == 0 ? 0.F : -1.5F, 0.F)};
+    const RiskConfig rc;
+    fr.risks = {assessRisk(fr.tracks[0], rc)};
+    for (int k = 0; k < 3; ++k) {
+      fr.warning = f.update(10.0 * level + 0.1 * k, fr.tracks, fr.risks);
+    }
+    const auto arr = buildTrackMarkers(std_msgs::msg::Header{}, fr, TrackVizConfig{},
+        builtin_interfaces::msg::Duration{}, "");
+    for (const auto & m : arr.markers) {
+      if (m.type == visualization_msgs::msg::Marker::TEXT_VIEW_FACING && m.action == 0) {
+        EXPECT_NE(m.text.find_first_not_of(" \t\n"), std::string::npos) << m.ns << " " << m.id;
+      }
+      for (const auto & p : m.points) {
+        EXPECT_TRUE(std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z)) << m.ns;
+      }
+    }
+  }
+}
