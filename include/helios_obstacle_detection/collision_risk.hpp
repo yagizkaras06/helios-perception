@@ -38,6 +38,10 @@ struct RiskConfig
   float critical_distance{0.5F};    // [m] clearance (distance minus ego_radius)
   float high_distance{1.0F};
   float medium_distance{2.5F};
+  // Frame summary (max_risk) only, per-track levels are unchanged: while the LiDAR is
+  // STATIONARY a STATIC object cannot close in (neither moves), so its distance-only grade does
+  // not count towards the summary (e.g. the desk next to the sensor). Moving ego: always counted.
+  bool summary_ignore_static_when_stationary{true};
 
   void validate() const;
 };

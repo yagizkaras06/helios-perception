@@ -128,6 +128,10 @@ bant ile çarpışma rotası. `v_rel = v_nesne − v_ego − ω×p`, kovaryansı
 STATIC izlerde nesne hızı 0 (±0.05 m/s) modellenir. Hızı güvenilir olmayan izlerde (genç iz, büyük
 yapı, ego bilinmiyor) TTC hesaplanmaz, risk yalnızca mesafeye dayanır (`ttc_valid=false`).
 Seviyeler: `NONE / LOW / MEDIUM / HIGH / CRITICAL`.
+Kare özeti `max_risk_level` (onaylı izlerin en yükseği): LiDAR **STATIONARY** iken STATIC izler
+sayılmaz; ikisi de durduğu için yaklaşamazlar (ör. sensörün 0.5 m yanındaki masa özeti sürekli
+CRITICAL yapıyordu). İz başına seviyeler değişmez; ego hareket ederken sabit nesneler sayılır
+(`risk.summary_ignore_static_when_stationary`, varsayılan `true`).
 
 **Sensör sağlığı / veri kaybı.** Başlık damgalarından kare boşluğu ve kaçırılan kare tahmini, zaman
 sıçraması (bag döngüsü, sürücü yeniden başlatma → takipçi/ego sıfırlanır), geçerli dönüş oranı

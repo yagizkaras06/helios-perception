@@ -418,6 +418,8 @@ private:
     rc.critical_distance = f("risk.critical_distance", 0.5);
     rc.high_distance = f("risk.high_distance", 1.0);
     rc.medium_distance = f("risk.medium_distance", 2.5);
+    rc.summary_ignore_static_when_stationary =
+      b("risk.summary_ignore_static_when_stationary", true);
     // collision warning (display only)
     WarningConfig & wc = pc.warning;
     wc.enabled = b("warning.enabled", true);

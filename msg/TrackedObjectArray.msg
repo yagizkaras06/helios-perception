@@ -17,7 +17,8 @@ float32 ego_degeneracy        # smallest translational information / corresponde
 string ego_status_text
 
 uint8 ground_status           # see ObstacleArray.GROUND_*
-uint8 max_risk_level          # over confirmed tracks
+uint8 max_risk_level          # over confirmed tracks (STATIC ones skipped while ego is STATIONARY,
+                              # see risk.summary_ignore_static_when_stationary; per-track levels unchanged)
 int64 max_risk_track_id       # -1 if none
 
 TrackedObject[] objects

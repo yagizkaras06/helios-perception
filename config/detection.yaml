@@ -217,6 +217,8 @@
       critical_distance: 0.5         # [m] clearance
       high_distance: 1.0
       medium_distance: 2.5
+      summary_ignore_static_when_stationary: true  # max_risk_level (summary only): skip STATIC
+                                     # tracks while the LiDAR stands still (they cannot close in)
 
     # ---------------------------------------------------------------- collision warning (display)
     # Banner in RViz + /helios/collision_warning. Only approaching objects with a RELIABLE velocity

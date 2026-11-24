@@ -306,3 +306,61 @@ TEST(TrackingV03, TimestampJumpResets)
   EXPECT_EQ(out[0].state, TrackState::kTentative);
   EXPECT_EQ(out[0].motion, MotionState::kUnknown);
 }
+
+// Frame summary: a static box next to a still sensor (the desk case) keeps its per-track
+// distance grade (CRITICAL) but does not drive max_risk while the ego is STATIONARY.
+TEST(TrackingV03, StaticNeighbourDoesNotDriveSummaryWhileStationary)
+{
+  for (const bool skip : {true, false}) {
+    PipelineConfig pc = pipelineConfig();
+    pc.risk.summary_ignore_static_when_stationary = skip;
+    PerceptionPipeline pipe(pc);
+    sim::SimConfig sc;
+    sim::LidarSimulator lidar(sc);
+    sim::Scene scene;
+    sim::SimBox desk;
+    desk.position = Eigen::Vector2d(1.3, 0.0);   // near face at 0.8 m -> clearance 0.3 m
+    desk.size = Eigen::Vector3d(1.0, 1.2, 1.0);
+    desk.evaluate = false;
+    scene.boxes.push_back(desk);
+    // structure for the LiDAR ego estimate (walls + far static clutter, all outside 2.5 m)
+    auto add = [&](double x, double y, double l, double w) {
+        sim::SimBox b;
+        b.position = Eigen::Vector2d(x, y);
+        b.size = Eigen::Vector3d(l, w, 3.0);
+        b.evaluate = false;
+        scene.boxes.push_back(b);
+      };
+    add(5.0, 12.0, 40.0, 0.3);
+    add(-12.0, 0.0, 0.3, 24.0);
+    add(9.0, 4.0, 1.0, 1.0);
+    add(-6.0, -5.0, 2.0, 2.0);
+    add(4.0, -7.0, 0.4, 0.4);
+    FrameOutput out;
+    for (int k = 0; k < 160; ++k) {
+      std::vector<int> hits;
+      auto msg = lidar.scan(scene, hits);
+      std::string err;
+      out = FrameOutput{};
+      ASSERT_TRUE(pipe.process(msg, 1000.0 + scene.time, out, err)) << err;
+      scene.step(0.1);
+    }
+    ASSERT_EQ(out.ego.state, EgoState::kStationary);
+    bool found = false;
+    for (std::size_t i = 0; i < out.tracks.size(); ++i) {
+      if (out.tracks[i].state != TrackState::kTentative &&
+        out.tracks[i].motion == MotionState::kStatic && out.tracks[i].closest_distance < 1.F)
+      {
+        found = true;
+        EXPECT_EQ(out.risks[i].level, RiskLevel::kCritical);   // per-track grade unchanged
+      }
+    }
+    ASSERT_TRUE(found);
+    if (skip) {
+      EXPECT_EQ(out.max_risk, RiskLevel::kNone);
+      EXPECT_EQ(out.max_risk_track, -1);
+    } else {
+      EXPECT_EQ(out.max_risk, RiskLevel::kCritical);
+    }
+  }
+}

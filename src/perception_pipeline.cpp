@@ -264,8 +264,13 @@ void PerceptionPipeline::processFiltered(const CloudPtr & roi, double stamp, Fra
     tracker_->update(stamp, out.obstacles, out.ego, out.tracks, out.obstacle_cloud.get());
     out.tracker_stats = tracker_->stats();
     out.risks.reserve(out.tracks.size());
+    const bool skip_static = config_.risk.summary_ignore_static_when_stationary &&
+      out.ego.state == EgoState::kStationary;
     for (std::size_t i = 0; i < out.tracks.size(); ++i) {
       out.risks.push_back(assessRisk(out.tracks[i], config_.risk));
+      if (skip_static && out.tracks[i].motion == MotionState::kStatic) {
+        continue;   // summary only: cannot close in while both stand still
+      }
       if (out.tracks[i].state != TrackState::kTentative &&
         (out.max_risk_track < 0 || out.risks[i].level > out.max_risk))
       {
