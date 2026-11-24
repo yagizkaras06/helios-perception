@@ -24,7 +24,7 @@ LiDAR cannot support are marked as unreliable or unknown, never presented as cer
 | **Measured live** | 9.96 Hz in / out, 0 frames dropped by the detector, 13.9 ms receive-to-publish mean (18.6 ms p95), 18 % of one CPU core |
 | **Offline** | 4.6-5.9 ms per scan on real recordings (170-217 scans/s) |
 | **Synthetic accuracy** | MOTA 0.82-1.00 over 7 ground-truth scenarios; no object that never moved was classified as moving |
-| **Tests** | 92 test cases in 14 test programs: 10 gtest suites (unit, pipeline, system), 3 ROS launch tests, 1 pytest module (demo markers) |
+| **Tests** | 94 test cases in 14 test programs: 10 gtest suites (unit, pipeline, system), 3 ROS launch tests, 1 pytest module (demo markers) |
 
 Details and method: [doc/benchmarks.md](doc/benchmarks.md).
 
