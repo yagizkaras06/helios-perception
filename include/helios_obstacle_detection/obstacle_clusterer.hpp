@@ -41,6 +41,10 @@ public:
 
   const ClusterConfig & config() const noexcept {return config_;}
 
+  /// Reference implementation of the adaptive mode (k-d tree radius search); used for degenerate
+  /// extents and to verify that the grid search gives identical clusters.
+  std::vector<pcl::PointIndices> extractAdaptiveKdTree(const CloudConstPtr & cloud) const;
+
 private:
   std::vector<pcl::PointIndices> extractFixed(const CloudConstPtr & cloud) const;
   std::vector<pcl::PointIndices> extractAdaptive(const CloudConstPtr & cloud) const;

@@ -312,6 +312,7 @@ kilit altında yapılır (kayıp / çift kayıt yok, yazıcı sürekliliği doğ
 | `pre_event_s` / `post_event_s` | 5 / 5 | öncesi / sonrası [s] |
 | `max_event_s` | 60 | birleşen tetikleyicilerle en uzun olay [s] |
 | `rearm_s` | 1.0 | tekrar tetikleme için gereken süre [s] |
+| `cooldown_s` | 30 | bir olay bittikten sonra aynı tür tetikleyici bu süre yeni olay açmaz (sürekli tekrarlayan durum diski doldurmasın; sayısı diagnostics'te) |
 | `trigger_critical_risk` / `trigger_no_data` / `trigger_ego_unknown` | true | tetikleyiciler |
 | `risk_ignore_static` | true | STATIC arka plan (sensör yanındaki masa) risk olayı üretmez |
 | `record_track_markers` / `record_collision_warning` | true | RViz kutuları ve uyarı da kaydedilir |

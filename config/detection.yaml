@@ -244,6 +244,8 @@
       post_event_s: 5.0
       max_event_s: 60.0              # repeated triggers extend one event up to this length
       rearm_s: 1.0                   # a condition must clear / be valid this long to fire again
+      cooldown_s: 30.0               # after an event, the same trigger type opens no new event for
+                                     # this long (repeating situation; counted in diagnostics)
       trigger_critical_risk: true
       trigger_no_data: true
       trigger_ego_unknown: true

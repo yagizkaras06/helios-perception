@@ -135,6 +135,8 @@ public:
     tc.no_data = declare_parameter<bool>("events.trigger_no_data", true);
     tc.ego_unknown = declare_parameter<bool>("events.trigger_ego_unknown", true);
     tc.rearm_s = declare_parameter<double>("events.rearm_s", 1.0);
+    cooldown_ns_ = static_cast<std::int64_t>(
+      declare_parameter<double>("events.cooldown_s", 30.0) * 1e9);
     risk_ignore_static_ = declare_parameter<bool>("events.risk_ignore_static", true);
     const bool rec_markers = declare_parameter<bool>("events.record_track_markers", true);
     const bool rec_warning = declare_parameter<bool>("events.record_collision_warning", true);
@@ -305,6 +307,14 @@ private:
       publishEvent("merged", core_->current(), &t);
       return;
     }
+    // cooldown: a trigger of a type that ended an event less than cooldown_s ago is the same
+    // situation repeating (e.g. a person next to the sensor) - counted, not recorded again
+    const auto ti = static_cast<std::size_t>(t.type);
+    if (last_end_ns_[ti] > 0 && now - last_end_ns_[ti] < cooldown_ns_) {
+      ++suppressed_cooldown_;
+      RCLCPP_DEBUG(get_logger(), "%s within cooldown: not a new event", toString(t.type));
+      return;
+    }
     // disk limits: quota of the events folder and free space on its file system
     std::error_code ec;
     std::filesystem::create_directories(out_dir_, ec);
@@ -337,8 +347,12 @@ private:
 
   void onTick()
   {
-    auto closed = core_->tick(steadyNs());
+    const std::int64_t now = steadyNs();
+    auto closed = core_->tick(now);
     if (closed) {
+      for (const auto & tr : closed->triggers) {
+        last_end_ns_[static_cast<std::size_t>(tr.type)] = now;
+      }
       RCLCPP_INFO(get_logger(), "event %s closed (%s, %.1f s pre covered, %zu trigger(s)) -> %s",
         closed->id.c_str(), closed->end_reason.c_str(), closed->pre_covered_s,
         closed->triggers.size(), closed->dir.c_str());
@@ -439,6 +453,7 @@ private:
     d.add("events_written", std::to_string(ws.events_written));
     d.add("triggers_merged", std::to_string(core_->triggersMerged()));
     d.add("events_skipped_disk", std::to_string(skipped_disk_));
+    d.add("triggers_in_cooldown", std::to_string(suppressed_cooldown_));
     d.add("buffer_seconds", std::to_string(covered));
     d.add("buffer_mb", std::to_string(static_cast<double>(buf.bytes()) / 1048576.0));
     d.add("buffer_evicted_by_bytes", std::to_string(buf.evictedByBytes()));
@@ -477,6 +492,9 @@ private:
   double last_stamp_{-1.0};
   std::uint64_t clock_jumps_{0}, skipped_disk_{0}, tick_count_{0};
   std::string disk_error_;
+  std::int64_t cooldown_ns_{0};
+  std::int64_t last_end_ns_[3]{0, 0, 0};   // per TriggerType: steady time the last event ended
+  std::uint64_t suppressed_cooldown_{0};
 };
 
 }  // namespace events

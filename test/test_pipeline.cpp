@@ -223,3 +223,55 @@ TEST(Performance, Percentile)
   s.add(1000);  // ring buffer drops the oldest (1)
   EXPECT_DOUBLE_EQ(s.max(), 1000.0);
 }
+
+// The adaptive clusterer uses a uniform-grid neighbour search; it must give exactly the clusters of
+// the k-d tree reference (same radius rule, same seed order) on dense, sparse and far clouds.
+TEST(Clusterer, GridSearchMatchesKdTreeReference)
+{
+  std::mt19937 rng(11);
+  std::uniform_real_distribution<float> u(-1.F, 1.F);
+  for (int trial = 0; trial < 12; ++trial) {
+    auto cloud = std::make_shared<Cloud>();
+    // dense near-field blobs (desk-like), people-sized objects, far sparse returns, line walls
+    const int blobs = 3 + trial % 5;
+    for (int b = 0; b < blobs; ++b) {
+      const float r = 0.6F + 28.F * (0.5F + 0.5F * u(rng)) * (trial % 3 == 0 ? 1.F : 0.35F);
+      const float a = 3.1416F * u(rng);
+      const float cx = r * std::cos(a), cy = r * std::sin(a);
+      const int pts = 20 + static_cast<int>(400 * (0.5F + 0.5F * u(rng)));
+      const float ext = 0.2F + 1.5F * (0.5F + 0.5F * u(rng));
+      for (int k = 0; k < pts; ++k) {
+        PointT p;
+        p.x = cx + ext * u(rng);
+        p.y = cy + ext * u(rng);
+        p.z = 0.9F * u(rng);
+        cloud->push_back(p);
+      }
+    }
+    for (int k = 0; k < 300; ++k) {   // scattered clutter (singletons / small groups)
+      PointT p;
+      p.x = 30.F * u(rng);
+      p.y = 30.F * u(rng);
+      p.z = 2.F * u(rng);
+      cloud->push_back(p);
+    }
+    for (int k = 0; k < 400; ++k) {   // wall: a long thin line of points at ~0.1 m spacing
+      PointT p;
+      p.x = -12.F + 0.1F * static_cast<float>(k % 200);
+      p.y = 9.F + 0.05F * u(rng);
+      p.z = 0.5F * static_cast<float>(k / 200);
+      cloud->push_back(p);
+    }
+    ClusterConfig cfg;
+    cfg.adaptive = true;
+    cfg.min_points = trial % 2 ? 3 : 8;
+    cfg.max_points = trial % 4 == 3 ? 150 : 25000;   // also the [min, max] discard rule
+    ObstacleClusterer c(cfg);
+    const auto grid = c.extract(cloud);
+    const auto ref = c.extractAdaptiveKdTree(cloud);
+    ASSERT_EQ(grid.size(), ref.size()) << "trial " << trial;
+    for (std::size_t i = 0; i < grid.size(); ++i) {
+      EXPECT_EQ(grid[i].indices, ref[i].indices) << "trial " << trial << " cluster " << i;
+    }
+  }
+}
