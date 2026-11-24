@@ -25,6 +25,7 @@ readable by `ros2 bag info` and the MCAP tools.
 import argparse
 import json
 import os
+import sys
 import time
 
 import rclpy
@@ -194,6 +195,8 @@ def events(a):
 
 
 def main():
+    # progress lines appear immediately when stdout is a pipe (launch logs, wrappers)
+    sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)

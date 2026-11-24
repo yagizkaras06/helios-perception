@@ -15,12 +15,19 @@ Examples:
 
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+def bag_tool_cmd():
+    """bag_tool.py run directly (not through `ros2 run`): launch then signals the tool itself, so
+    it stops with the launch instead of being left behind when the `ros2 run` wrapper is killed."""
+    return [os.path.join(get_package_prefix('helios_obstacle_detection'), 'lib',
+                         'helios_obstacle_detection', 'bag_tool.py')]
 
 
 def rviz_config_for_namespace(context):
@@ -67,13 +74,13 @@ def launch_setup(context):
     )
     nsv = ns.perform(context).strip('/')
     record = ExecuteProcess(
-        cmd=['ros2', 'run', 'helios_obstacle_detection', 'bag_tool.py', 'record',
-             '-o', LaunchConfiguration('record_dir'), '--duration',
-             LaunchConfiguration('record_duration'),
-             '--topic', LaunchConfiguration('input_topic'),
-             '--topic', f'/{nsv}/obstacles', '--topic', f'/{nsv}/tracks',
-             '--topic', f'/{nsv}/processing_stats', '--topic', f'/{nsv}/track_markers',
-             '--topic', '/diagnostics'],
+        cmd=bag_tool_cmd() + [
+            'record', '-o', LaunchConfiguration('record_dir'), '--duration',
+            LaunchConfiguration('record_duration'),
+            '--topic', LaunchConfiguration('input_topic'),
+            '--topic', f'/{nsv}/obstacles', '--topic', f'/{nsv}/tracks',
+            '--topic', f'/{nsv}/processing_stats', '--topic', f'/{nsv}/track_markers',
+            '--topic', '/diagnostics'],
         condition=IfCondition(LaunchConfiguration('record')),
         output='screen',
     )

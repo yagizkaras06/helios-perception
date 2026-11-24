@@ -16,13 +16,20 @@ Event recordings (event_recorder) contain the raw input AND the outputs:
 import json
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription,
                             OpaqueFunction, TimerAction)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+def bag_tool_cmd():
+    """bag_tool.py run directly (not through `ros2 run`): launch then signals the tool itself, so
+    it stops with the launch instead of being left behind when the `ros2 run` wrapper is killed."""
+    return [os.path.join(get_package_prefix('helios_obstacle_detection'), 'lib',
+                         'helios_obstacle_detection', 'bag_tool.py')]
 
 
 def player(context):
@@ -42,9 +49,9 @@ def player(context):
         auto_ns = next((t['name'][:-len('/tracks')].strip('/') for t in topics
                         if t['name'].endswith('/tracks')), auto_ns)
     src_input = src_input or auto_input
-    cmd = ['ros2', 'run', 'helios_obstacle_detection', 'bag_tool.py', 'play', bag,
-           '--rate', LaunchConfiguration('rate').perform(context),
-           '--start', LaunchConfiguration('start').perform(context)]
+    cmd = bag_tool_cmd() + ['play', bag,
+                            '--rate', LaunchConfiguration('rate').perform(context),
+                            '--start', LaunchConfiguration('start').perform(context)]
     if mode == 'recorded':
         # recorded outputs exactly as they were published, under /<namespace>/...; the raw input is
         # shown through the RViz point-cloud display (/<namespace>/filtered_points)
