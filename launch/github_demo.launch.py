@@ -108,17 +108,20 @@ def setup(context):
     with open(cfg, 'w') as f:
         f.write(text)
 
+    panel = LaunchConfiguration('status_panel').perform(context).lower() in ('1', 'true', 'yes')
     actions.append(Node(
         package='helios_obstacle_detection', executable='demo_visualizer.py',
         name='demo_visualizer', namespace=ns, output='screen',
         parameters=[{'language': LaunchConfiguration('language'),
-                     'show_hud': LaunchConfiguration('hud')}]))
+                     'show_hud': LaunchConfiguration('hud'),
+                     # the status panel shows the warning; no second banner in the 3D view
+                     'show_banner': not panel}]))
     if LaunchConfiguration('rviz').perform(context).lower() in ('1', 'true', 'yes'):
         actions.append(ExecuteProcess(
             cmd=_clean_env_cmd(['rviz2', '-d', cfg, '--ros-args', '-r',
                                 '__node:=helios_demo_rviz', '-r', f'__ns:=/{ns}']),
             output='log'))
-    if LaunchConfiguration('status_panel').perform(context).lower() in ('1', 'true', 'yes'):
+    if panel:
         exe = os.path.join(os.path.dirname(share), '..', 'lib', 'helios_obstacle_detection',
                            'status_panel.py')
         actions.append(ExecuteProcess(

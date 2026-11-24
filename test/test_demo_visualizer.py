@@ -152,13 +152,16 @@ def test_uncertain_estimates_are_labelled():
     assert 'v:n/a' in dv.label_lines(track(vstat=0))[1]
     reliable = dv.label_lines(track(vstat=2, speed=1.2))
     assert '1.2+-0.2m/s' in reliable[1] and 'deg' in reliable[1]
+    # RViz draws spaces several characters wide: labels use the separator instead
+    for line in reliable + lab:
+        assert ' ' not in line
 
 
 def test_ttc_only_with_valid_velocity():
     t = track(ttc_valid=False, risk_level=4, ttc=1.0)
     assert len(dv.label_lines(t)) == 2
     t = track(ttc_valid=True, risk_level=3, ttc=1.0, ttc_pessimistic=0.7)
-    assert dv.label_lines(t)[2].startswith('TTC 1.0s')
+    assert dv.label_lines(t)[2] == 'TTC|1.0s|worst|0.7s'
 
 
 @pytest.mark.parametrize('level,en,tr', [(0, 'NO COLLISION RISK', 'CARPISMA YOK'),
@@ -175,3 +178,10 @@ def test_heading_arrow_only_for_reliable_moving_tracks():
     objs = [track(i=1, motion=2, vstat=2), track(i=2, motion=2, vstat=1, moved=2.0)]
     arr = dv.build_markers(header(), tracks(*objs), None, stats(), cfg())
     assert drawn_ids(arr, 'heading') == [1]
+
+
+def test_banner_can_be_left_to_the_status_panel():
+    arr = dv.build_markers(header(), tracks(), warning(2), stats(), cfg(show_banner=False))
+    assert not [m for m in arr.markers if m.ns == 'collision_warning']
+    foot = next(m for m in arr.markers if m.ns == 'sensor')
+    assert (foot.color.r, foot.color.g, foot.color.b) == pytest.approx(dv.COL_WARN[2])

@@ -45,11 +45,11 @@ WARN_TEXT = {
     'tr': {0: 'CARPISMA YOK', 1: 'DIKKAT: YAKLASAN NESNE', 2: 'CARPISMA RISKI VAR'},
 }
 MOTION = {0: 'UNKNOWN', 1: 'STATIC', 2: 'MOVING'}
+SEP = '|'   # token separator in 3D labels (see label_lines)
 LIFECYCLE = {0: 'TENTATIVE', 1: 'CONFIRMED', 2: 'OCCLUDED', 3: 'LOST'}
 EGO = {0: 'UNKNOWN', 1: 'STATIONARY', 2: 'MOVING', 3: 'UNRELIABLE'}
 STATUS = {0: 'OK', 1: 'NO DATA', 2: 'OVERLOAD', 3: 'GROUND DEGRADED', 4: 'GROUND FAILED',
           5: 'INVALID INPUT', 6: 'SENSOR DEGRADED', 7: 'EGO UNKNOWN'}
-RISK = {0: 'NONE', 1: 'LOW', 2: 'MEDIUM', 3: 'HIGH', 4: 'CRITICAL'}
 
 DEFAULTS = {
     'language': 'en',
@@ -60,6 +60,7 @@ DEFAULTS = {
     'show_trails': True,
     'show_range_rings': True,
     'show_hud': False,            # diagnostics text in the 3D view (also in the status panel)
+    'show_banner': True,          # collision banner in the 3D view (off when the panel shows it)
     'only_dynamic_after_learning': True,
     'min_moving_displacement': 0.5,
     'min_dynamic_displacement': 1.0,
@@ -151,25 +152,27 @@ def visible(o, background_learning, cfg):
 def label_lines(o):
     """Short ASCII lines; only published values, uncertain ones marked.
 
-    RViz draws spaces very wide in TEXT_VIEW_FACING markers, so tokens are compact and separated
-    by single spaces (e.g. "#42 MOVING", "3.4m 1.2+-0.3m/s 45deg").
+    RViz draws a space in TEXT_VIEW_FACING markers several characters wide, so tokens are joined
+    with SEP instead (e.g. "#42|MOVING", "3.4m|1.2+-0.3m/s|45deg").
     """
-    life = '' if o.track_state == 1 else ' ' + LIFECYCLE.get(o.track_state, '?')
-    line1 = f'#{o.id} {MOTION.get(o.motion_state, "?")}{life}'
+    life = '' if o.track_state == 1 else SEP + LIFECYCLE.get(o.track_state, '?')
+    line1 = f'#{o.id}{SEP}{MOTION.get(o.motion_state, "?")}{life}'
     dist = f'{o.closest_distance:.1f}m'
     if o.relative_motion_only:
         vel = 'v:relative-only'
     elif o.velocity_status == 2:          # RELIABLE
         vel = f'{o.speed:.1f}+-{o.speed_sigma:.1f}m/s'
         if o.heading_valid:
-            vel += f' {math.degrees(o.heading):.0f}deg'
+            vel += f'{SEP}{math.degrees(o.heading):.0f}deg'
     elif o.velocity_status == 1:          # UNRELIABLE: estimate exists but is not trusted
-        vel = f'UNRELIABLE {o.speed:.1f}+-{o.speed_sigma:.1f}m/s'
+        vel = f'UNRELIABLE{SEP}{o.speed:.1f}+-{o.speed_sigma:.1f}m/s'
     else:
         vel = 'v:n/a'
-    lines = [line1, f'{dist} {vel}']
+    lines = [line1, f'{dist}{SEP}{vel}']
+    # TTC of an approaching object; the operator decision (collision course + TTC) is the banner,
+    # so the per-track risk grade is not repeated here (it would read as a second verdict)
     if o.ttc_valid and o.risk_level >= 2 and math.isfinite(o.ttc):
-        lines.append(f'TTC {o.ttc:.1f}s(worst {o.ttc_pessimistic:.1f}s) {RISK[o.risk_level]}')
+        lines.append(f'TTC{SEP}{o.ttc:.1f}s{SEP}worst{SEP}{o.ttc_pessimistic:.1f}s')
     return lines
 
 
@@ -234,24 +237,8 @@ def build_markers(header, tracks, warning, stats, cfg):
     foot.scale.z = 0.05
     arr.markers.append(foot)
     # ---- collision warning ----------------------------------------------------------------
-    texts = WARN_TEXT.get(cfg['language'], WARN_TEXT['en'])
-    head = texts[level]
-    if level == 2:
-        head = '!! ' + head + ' !!'
-    arr.markers.append(_text(header, 'collision_warning', 0, head, cfg['banner_x'], cfg['banner_y'],
-                             2.0, cfg['banner_scale'] * (1.0 if level else 0.45), COL_WARN[level],
-                             lt, 1.0 if level else 0.6))
-    if level and warning is not None and warning.track_id:
-        if math.isfinite(warning.ttc) and math.isfinite(warning.ttc_pessimistic):
-            det = (f'#{warning.track_id} TTC {warning.ttc:.1f}s(worst '
-                   f'{warning.ttc_pessimistic:.1f}s) {warning.distance:.1f}m '
-                   f'{warning.closing_speed:.1f}m/s')
-        else:
-            det = f'#{warning.track_id} {warning.distance:.1f}m {warning.closing_speed:.1f}m/s'
-        m = _text(header, 'collision_warning', 1, det, cfg['banner_x'] - 1.1 * cfg['banner_scale'],
-                  cfg['banner_y'], 2.0, 0.55 * cfg['banner_scale'], COL_WARN[level], lt)
-        if m is not None:
-            arr.markers.append(m)
+    if cfg['show_banner']:
+        _banner(arr, header, warning, level, cfg, lt)
     # ---- optional diagnostics HUD -----------------------------------------------------------
     if cfg['show_hud'] and stats is not None:
         hud = (f'in {stats.input_fps:.1f}Hz out {stats.output_fps:.1f}Hz latency-p95 '
@@ -262,6 +249,28 @@ def build_markers(header, tracks, warning, stats, cfg):
                                  cfg['hud_scale'], COL_TEXT, lt))
     arr.markers = [m for m in arr.markers if m is not None]
     return arr
+
+
+def _banner(arr, header, warning, level, cfg, lt):
+    texts = WARN_TEXT.get(cfg['language'], WARN_TEXT['en'])
+    head = texts[level]
+    if level == 2:
+        head = '!! ' + head + ' !!'
+    arr.markers.append(_text(header, 'collision_warning', 0, head, cfg['banner_x'], cfg['banner_y'],
+                             2.0, cfg['banner_scale'] * (1.0 if level else 0.45), COL_WARN[level],
+                             lt, 1.0 if level else 0.6))
+    if level and warning is not None and warning.track_id:
+        if math.isfinite(warning.ttc) and math.isfinite(warning.ttc_pessimistic):
+            det = SEP.join([f'#{warning.track_id}', f'TTC{SEP}{warning.ttc:.1f}s',
+                            f'worst{SEP}{warning.ttc_pessimistic:.1f}s',
+                            f'{warning.distance:.1f}m', f'{warning.closing_speed:.1f}m/s'])
+        else:
+            det = SEP.join([f'#{warning.track_id}', f'{warning.distance:.1f}m',
+                            f'{warning.closing_speed:.1f}m/s'])
+        m = _text(header, 'collision_warning', 1, det, cfg['banner_x'] - 1.1 * cfg['banner_scale'],
+                  cfg['banner_y'], 2.0, 0.55 * cfg['banner_scale'], COL_WARN[level], lt)
+        if m is not None:
+            arr.markers.append(m)
 
 
 class DemoVisualizer(Node):

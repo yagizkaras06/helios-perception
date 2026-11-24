@@ -150,6 +150,9 @@ def play(a):
                 break
     except KeyboardInterrupt:
         pass
+    except Exception:   # noqa: B902 - a shutdown signal invalidated the context mid-publish
+        if rclpy.ok():
+            raise
     print('playback finished')
     node.destroy_node()
     rclpy.try_shutdown()
