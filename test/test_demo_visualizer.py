@@ -185,3 +185,10 @@ def test_banner_can_be_left_to_the_status_panel():
     assert not [m for m in arr.markers if m.ns == 'collision_warning']
     foot = next(m for m in arr.markers if m.ns == 'sensor')
     assert (foot.color.r, foot.color.g, foot.color.b) == pytest.approx(dv.COL_WARN[2])
+
+
+def test_stopped_objects_are_drawn_only_while_their_motion_is_recent():
+    recent = track(i=1, motion=0, moved=2.0, ever_moved=True, time_since_moving_s=2.0)
+    old = track(i=2, motion=0, moved=9.0, ever_moved=True, time_since_moving_s=40.0)
+    arr = dv.build_markers(header(), tracks(recent, old), None, stats(False), cfg())
+    assert drawn_ids(arr) == [1]

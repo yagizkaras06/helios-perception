@@ -64,6 +64,7 @@ DEFAULTS = {
     'only_dynamic_after_learning': True,
     'min_moving_displacement': 0.5,
     'min_dynamic_displacement': 1.0,
+    'recent_motion_s': 10.0,      # stopped objects are drawn this long after they last moved
     'arrow_time_s': 1.0,
     # banner / HUD at the lower edge of the demo view (behind the sensor), away from the area in
     # front of it; with another camera set them via parameters
@@ -144,7 +145,9 @@ def visible(o, background_learning, cfg):
         return False
     if cfg['only_dynamic_after_learning'] and not background_learning:
         moving_now = o.motion_state == 2 and o.max_displacement >= cfg['min_moving_displacement']
-        moved_before = o.ever_moved and o.max_displacement >= cfg['min_dynamic_displacement']
+        moved_before = (o.ever_moved and o.max_displacement >= cfg['min_dynamic_displacement']
+                        and (cfg['recent_motion_s'] <= 0
+                             or o.time_since_moving_s < cfg['recent_motion_s']))
         return moving_now or moved_before
     return True
 

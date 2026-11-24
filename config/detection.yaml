@@ -273,6 +273,7 @@
                                          # are MOVING or moved before (statics stay in /tracks + risk)
       min_moving_displacement: 0.5   # [m] MOVING objects drawn once this far from where first seen
       min_dynamic_displacement: 1.0  # [m] stopped objects (moved before) drawn if they went this far
+      recent_motion_s: 10.0          # [s] ... and only this long after they last moved (0: forever)
       show_trails: true
       show_uncertainty: false        # 2-sigma position ellipse (off: cleaner screen)
       show_range_rings: true         # 5 / 10 / 15 / 20 m distance circles

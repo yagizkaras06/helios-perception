@@ -233,7 +233,8 @@ MarkerArray buildTrackMarkers(
       // static scene learned: draw only objects that really went somewhere
       const bool moving_now = t.motion == MotionState::kMoving &&
         t.max_displacement >= cfg.min_moving_displacement;
-      const bool moved_before = t.ever_moved && t.max_displacement >= cfg.min_dynamic_displacement;
+      const bool moved_before = t.ever_moved && t.max_displacement >= cfg.min_dynamic_displacement &&
+        (cfg.recent_motion_s <= 0.F || t.time_since_moving_s < cfg.recent_motion_s);
       if (!(moving_now || moved_before)) {
         continue;
       }

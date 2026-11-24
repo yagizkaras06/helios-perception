@@ -45,6 +45,11 @@ struct TrackVizConfig
   float min_moving_displacement{0.5F};   // [m]
   bool show_range_rings{true};           // 5 / 10 / 15 / 20 m circles around the sensor
   float min_dynamic_displacement{1.0F};  // [m]
+  // ... and only while that motion is recent: a stopped object is drawn for recent_motion_s after
+  // it was last MOVING (then it is treated like the static scene). Without this, one spurious
+  // MOVING blip of a sparse static object, or an identity taken over from a walker, kept a static
+  // object on screen forever. <= 0: no time limit (v0.3.1 behaviour).
+  float recent_motion_s{10.0F};          // [s]
   bool show_trails{true};
   bool show_uncertainty{true};
   bool show_prediction{true};

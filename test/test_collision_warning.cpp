@@ -177,3 +177,28 @@ TEST(CollisionWarning, MarkersNeverCarryBlankTextOrNaN)
     }
   }
 }
+
+// A stopped object (moved before) is drawn only while its motion is recent: a static object that
+// once got a spurious MOVING blip (or took over a walker's identity) must not stay on screen.
+TEST(Markers, StoppedObjectsAreDrawnOnlyWhileTheirMotionIsRecent)
+{
+  auto count = [](float since_moving) {
+      FrameOutput fr;
+      fr.background_learning = false;
+      TrackOutput t = track(4.F, 1.F, 0.F, 0.F, true, MotionState::kUnknown);
+      t.ever_moved = true;
+      t.max_displacement = 3.F;
+      t.time_since_moving_s = since_moving;
+      fr.tracks = {t};
+      fr.risks = {assessRisk(t, RiskConfig{})};
+      const auto arr = buildTrackMarkers(std_msgs::msg::Header{}, fr, TrackVizConfig{},
+          builtin_interfaces::msg::Duration{}, "");
+      std::size_t n = 0;
+      for (const auto & m : arr.markers) {
+        n += m.action == visualization_msgs::msg::Marker::ADD && m.id == 7 ? 1U : 0U;
+      }
+      return n;
+    };
+  EXPECT_GT(count(2.F), 0U);    // walked 2 s ago: still shown
+  EXPECT_EQ(count(30.F), 0U);   // last moved 30 s ago: part of the static scene again
+}
