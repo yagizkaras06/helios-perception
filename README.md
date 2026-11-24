@@ -12,7 +12,10 @@ is also estimated from the LiDAR alone. Every estimate carries its uncertainty, 
 LiDAR cannot support are marked as unreliable or unknown, never presented as certain.
 
 <p align="center">
-  <img src="assets/demo/demo.gif" width="900" alt="Helios Perception running on recorded Helios 32 data: tracked objects with velocity, heading and the collision warning panel">
+  <img src="assets/demo/demo.gif" width="760" alt="Live Helios 32 data in RViz: a person walks towards the sensor, the track turns from caution (orange) to collision risk (red) with TTC and predicted path">
+  <br><sub>Live Helios 32, engineering RViz view, top-down, sensor at the filled circle, rings every 5 m.
+  Full clip: <a href="assets/demo/demo.mp4">demo.mp4</a> (36 s). Labels are Turkish ASCII, see
+  <a href="#demo-media">Demo media</a>.</sub>
 </p>
 
 | | |
@@ -24,6 +27,20 @@ LiDAR cannot support are marked as unreliable or unknown, never presented as cer
 | **Tests** | 92 test cases in 14 test programs: 10 gtest suites (unit, pipeline, system), 3 ROS launch tests, 1 pytest module (demo markers) |
 
 Details and method: [doc/benchmarks.md](doc/benchmarks.md).
+
+<a id="demo-media"></a>
+| Approaching object: caution | Collision risk |
+|---|---|
+| <img src="assets/screenshots/approaching_object.png" width="420" alt="Orange caution banner, TTC 5.1 s, predicted path towards the sensor"> | <img src="assets/screenshots/collision_warning.png" width="420" alt="Red collision-risk banner, TTC 1.9 s"> |
+| **Two moving objects with velocity, heading and TTC** | **Scene overview (indoor lab, 5 / 10 / 15 m rings)** |
+| <img src="assets/screenshots/multi_object_tracking.png" width="420" alt="Two tracked moving objects with labels"> | <img src="assets/screenshots/overview.png" width="420" alt="Whole scene with one approaching track"> |
+
+All media were captured on the live sensor in the engineering RViz profile (`rviz/detection.rviz`),
+whose labels are Turkish ASCII: `DIKKAT: YAKLASAN NESNE` = *caution: approaching object*,
+`CARPISMA RISKI VAR` = *collision risk*, `CARPISMA YOK` = *no collision risk*,
+`TTC ... (en kotu ...)` = *TTC (worst case)*, `rota: CARPISMA` = *path: collision*. The images
+are cropped to the 3D view and flipped horizontally: the recording used a mirrored RViz camera.
+They are not edited otherwise. `github_demo.launch.py` provides an English presentation profile.
 
 > **Perception only.** The stack publishes no `cmd_vel`, brake, throttle or steering command and
 > is not connected to vehicle control; launch tests check this. Risk levels and the collision

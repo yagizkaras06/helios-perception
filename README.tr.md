@@ -2,6 +2,8 @@
 
 [English](README.md) · [Ölçümler](doc/benchmarks.md) · [Yol haritası](ROADMAP.md)
 
+<p align="center"><img src="assets/demo/demo.gif" width="700" alt="Canlı Helios 32 verisi: sensöre yaklaşan kişi, DİKKAT ve ÇARPIŞMA RİSKİ uyarıları"></p>
+
 RoboSense Helios 32 için ROS 2 Jazzy / C++17 **yalnızca algılama + tahmin** yığını:
 gelişmiş zemin segmentasyonu, menzile uyarlanabilir kümeleme, yönlü 3D kutular, **yalnızca LiDAR
 ile ego-hareket kestirimi**, Kalman/Hungarian **çoklu nesne takibi**, hareketli/sabit ayrımı, hız ve
