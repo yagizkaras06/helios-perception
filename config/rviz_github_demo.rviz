@@ -1,0 +1,109 @@
+# Helios Perception - GitHub demo profile (presentation only; the working profile is
+# rviz/detection.rviz). Raw cloud as a dim background + /helios/demo_markers from
+# demo_visualizer.py. Started by launch/github_demo.launch.py (topics rewritten for replay).
+# no docked panels: the 3D view uses the whole window (Panels menu brings them back)
+Panels: []
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid (1 m)
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 50
+      Color: 70; 74; 86
+      Alpha: 0.18
+      Line Style:
+        Line Width: 0.03
+        Value: Lines
+      Offset:
+        X: 0
+        Y: 0
+        Z: -0.9
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz_default_plugins/PointCloud2
+      Name: LiDAR point cloud (raw)
+      Enabled: true
+      Topic:
+        Value: /rslidar_points
+        Reliability Policy: Best Effort
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Color Transformer: FlatColor
+      Color: 120; 132; 152
+      Style: Points
+      Size (Pixels): 2
+      Alpha: 0.55
+      Decay Time: 0
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Tracks, warning, range rings
+      Enabled: true
+      Topic:
+        Value: /helios/demo_markers
+        Reliability Policy: Reliable
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Depth: 1
+      Namespaces:
+        boxes: true
+        box_fill: true
+        labels: true
+        heading: true
+        range_rings: true
+        sensor: true
+        collision_warning: true
+        hud: true
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 18; 20; 26
+    Fixed Frame: rslidar
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Demo top-down
+      Angle: 4.7124
+      Scale: 95
+      X: 1.0
+      Y: 0
+      Near Clip Distance: 0.01
+      Target Frame: <Fixed Frame>
+      Value: TopDownOrtho (rviz_default_plugins)
+    Saved:
+      - Class: rviz_default_plugins/TopDownOrtho
+        Name: Demo top-down
+        Angle: 4.7124
+        Scale: 95
+        X: 1.0
+        Y: 0
+        Near Clip Distance: 0.01
+        Target Frame: <Fixed Frame>
+        Value: TopDownOrtho (rviz_default_plugins)
+      - Class: rviz_default_plugins/Orbit
+        Name: Demo 3D
+        Distance: 16
+        Focal Point:
+          X: 2
+          Y: 0
+          Z: 0
+        Pitch: 0.75
+        Yaw: 3.14
+        Target Frame: <Fixed Frame>
+        Value: Orbit (rviz_default_plugins)
+Window Geometry:
+  Height: 1080
+  Width: 1340
+  X: 0
+  Y: 0
+  Hide Left Dock: true
+  Hide Right Dock: true

@@ -43,7 +43,8 @@ def player(context):
                         if t['name'].endswith('/tracks')), auto_ns)
     src_input = src_input or auto_input
     cmd = ['ros2', 'run', 'helios_obstacle_detection', 'bag_tool.py', 'play', bag,
-           '--rate', LaunchConfiguration('rate').perform(context)]
+           '--rate', LaunchConfiguration('rate').perform(context),
+           '--start', LaunchConfiguration('start').perform(context)]
     if mode == 'recorded':
         # recorded outputs exactly as they were published, under /<namespace>/...; the raw input is
         # shown through the RViz point-cloud display (/<namespace>/filtered_points)
@@ -89,6 +90,8 @@ def generate_launch_description():
         DeclareLaunchArgument('namespace', default_value='helios_bag'),
         DeclareLaunchArgument('replay_topic', default_value='/bag/rslidar_points'),
         DeclareLaunchArgument('rate', default_value='1.0'),
+        DeclareLaunchArgument('start', default_value='0.0',
+                              description='skip the first N seconds of the bag'),
         DeclareLaunchArgument('loop', default_value='false'),
         DeclareLaunchArgument('rviz', default_value='false'),
         DeclareLaunchArgument('mode', default_value='rerun',

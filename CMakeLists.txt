@@ -152,8 +152,12 @@ target_link_libraries(helios_benchmark
   rosbag2_cpp::rosbag2_cpp
 )
 
+# ---------------------------------------------------------------- synthetic sensor (demo without a LiDAR)
+add_executable(synthetic_lidar src/synthetic_lidar_node.cpp)
+target_link_libraries(synthetic_lidar helios_sim rclcpp::rclcpp ${sensor_msgs_TARGETS})
+
 install(TARGETS helios_obstacle_core helios_sim obstacle_detector helios_benchmark
-  helios_event_recorder event_recorder perception_node
+  helios_event_recorder event_recorder perception_node synthetic_lidar
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -164,12 +168,15 @@ install(PROGRAMS
   scripts/obstacle_report.py
   scripts/bag_tool.py
   scripts/perf_report.py
+  scripts/demo_visualizer.py
+  scripts/status_panel.py
   DESTINATION lib/${PROJECT_NAME})
 
 # ---------------------------------------------------------------- tests
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(launch_testing_ament_cmake REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
 
   foreach(t test_pipeline test_tracking test_ego_motion test_ground_czm test_risk_health
       test_static_map test_system test_tracking_v03 test_collision_warning test_event_recorder)
@@ -187,6 +194,9 @@ if(BUILD_TESTING)
   add_launch_test(test/test_node_launch.py TIMEOUT 120)
   # event recorder end-to-end: detector + recorder, CRITICAL risk + data loss -> rosbag2 events
   add_launch_test(test/test_event_recorder_launch.py TIMEOUT 180)
+  # demo layer: marker builder rules (pure Python) and the sensor-free demo launch end-to-end
+  ament_add_pytest_test(test_demo_visualizer test/test_demo_visualizer.py TIMEOUT 60)
+  add_launch_test(test/test_github_demo_launch.py TIMEOUT 150)
 endif()
 
 ament_export_dependencies(rosidl_default_runtime)
