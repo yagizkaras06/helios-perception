@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1010" viewBox="0 0 1280 1010" font-family="Helvetica, Arial, sans-serif">
+<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8c959f"/></marker></defs>
+<rect width="1280" height="1010" fill="#ffffff"/>
+<text x="40" y="44" font-size="22" font-weight="700" fill="#1f2328">Helios Perception: data flow</text>
+<text x="40" y="68" font-size="13" fill="#57606a">ROS 2 Jazzy, C++17. Default configuration (static map on). Perception only: no actuation topics are published.</text>
+<rect x="40" y="95" width="370" height="88" rx="8" fill="#eef4ff" stroke="#4a72c4" stroke-width="1.5"/>
+<text x="52" y="117" font-size="15" font-weight="600" fill="#1f2328">RoboSense Helios 32 (rslidar_sdk)</text>
+<text x="52" y="137" font-size="12.5" fill="#57606a">/rslidar_points  sensor_msgs/PointCloud2</text>
+<text x="52" y="154" font-size="12.5" fill="#57606a">10 Hz, 32 x 1800 (57,600 points), XYZI</text>
+<rect x="455" y="95" width="370" height="88" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="467" y="117" font-size="15" font-weight="600" fill="#1f2328">Recording (MCAP)</text>
+<text x="467" y="137" font-size="12.5" fill="#57606a">bag_tool.py play / replay.launch.py</text>
+<text x="467" y="154" font-size="12.5" fill="#57606a">republished on /bag/rslidar_points</text>
+<rect x="870" y="95" width="370" height="88" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="882" y="117" font-size="15" font-weight="600" fill="#1f2328">synthetic_lidar (no sensor needed)</text>
+<text x="882" y="137" font-size="12.5" fill="#57606a">ray-cast Helios-32-like scans of simulator</text>
+<text x="882" y="154" font-size="12.5" fill="#57606a">scenarios on /synthetic/rslidar_points</text>
+<line x1="225" y1="183" x2="560" y2="238" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<line x1="640" y1="183" x2="640" y2="238" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<line x1="1055" y1="183" x2="720" y2="238" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="30" y="240" width="1220" height="560" rx="12" fill="none" stroke="#1f2328" stroke-width="1.6"/>
+<text x="48" y="266" font-size="15" font-weight="700" fill="#1f2328">perception_node</text>
+<text x="196" y="266" font-size="12.5" fill="#57606a">input: newest frame only (reliable, depth 1, no backlog)  |  worker thread runs PerceptionPipeline (ROS-independent; tests and benchmark run the same code)</text>
+<rect x="50" y="290" width="270" height="108" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+<text x="62" y="312" font-size="15" font-weight="600" fill="#1f2328">CloudProcessor</text>
+<text x="62" y="332" font-size="12.5" fill="#57606a">field / NaN validation, range, ROI,</text>
+<text x="62" y="349" font-size="12.5" fill="#57606a">self-filter, azimuth coverage</text>
+<text x="62" y="366" font-size="12.5" fill="#57606a">(one pass)</text>
+<rect x="345" y="290" width="200" height="108" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+<text x="357" y="312" font-size="15" font-weight="600" fill="#1f2328">Voxel grid</text>
+<text x="357" y="332" font-size="12.5" fill="#57606a">leaf size adapts to the</text>
+<text x="357" y="349" font-size="12.5" fill="#57606a">processing-time budget</text>
+<rect x="570" y="290" width="300" height="108" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+<text x="582" y="312" font-size="15" font-weight="600" fill="#1f2328">CZM ground segmentation</text>
+<text x="582" y="332" font-size="12.5" fill="#57606a">concentric zones / rings / sectors,</text>
+<text x="582" y="349" font-size="12.5" fill="#57606a">per-cell PCA, adaptive thresholds,</text>
+<text x="582" y="366" font-size="12.5" fill="#57606a">fallback plane when degraded</text>
+<rect x="895" y="290" width="335" height="108" rx="8" fill="#fff7e6" stroke="#b7791f" stroke-width="1.5"/>
+<text x="907" y="312" font-size="15" font-weight="600" fill="#1f2328">Ego-motion (LiDAR only)</text>
+<text x="907" y="332" font-size="12.5" fill="#57606a">planar point-to-plane ICP + covariance;</text>
+<text x="907" y="349" font-size="12.5" fill="#57606a">areas of moving tracks excluded;</text>
+<text x="907" y="366" font-size="12.5" fill="#57606a">STATIONARY / MOVING / UNRELIABLE / UNKNOWN</text>
+<line x1="320" y1="344" x2="345" y2="344" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<line x1="545" y1="344" x2="570" y2="344" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<line x1="870" y1="344" x2="895" y2="344" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="50" y="432" width="370" height="108" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+<text x="62" y="454" font-size="15" font-weight="600" fill="#1f2328">Static background map</text>
+<text x="62" y="474" font-size="12.5" fill="#57606a">background / foreground split in the world</text>
+<text x="62" y="491" font-size="12.5" fill="#57606a">frame (ego pose); learned in the first ~10 s,</text>
+<text x="62" y="508" font-size="12.5" fill="#57606a">updated after tracking (movers not absorbed)</text>
+<rect x="445" y="432" width="370" height="108" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+<text x="457" y="454" font-size="15" font-weight="600" fill="#1f2328">Clustering + boxes</text>
+<text x="457" y="474" font-size="12.5" fill="#57606a">range-adaptive Euclidean clustering</text>
+<text x="457" y="491" font-size="12.5" fill="#57606a">(uniform 3D grid neighbour search),</text>
+<text x="457" y="508" font-size="12.5" fill="#57606a">AABB + L-shape oriented box</text>
+<rect x="840" y="432" width="390" height="108" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+<text x="852" y="454" font-size="15" font-weight="600" fill="#1f2328">Multi-object tracker</text>
+<text x="852" y="474" font-size="12.5" fill="#57606a">constant-velocity Kalman, gating, Hungarian;</text>
+<text x="852" y="491" font-size="12.5" fill="#57606a">TENTATIVE / CONFIRMED / OCCLUDED / LOST;</text>
+<text x="852" y="508" font-size="12.5" fill="#57606a">motion: STATIC / MOVING / UNKNOWN (onset test)</text>
+<line x1="1062" y1="398" x2="235" y2="432" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<line x1="420" y1="486" x2="445" y2="486" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<line x1="815" y1="486" x2="840" y2="486" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="50" y="574" width="570" height="108" rx="8" fill="#eefaf0" stroke="#3d8b50" stroke-width="1.5"/>
+<text x="62" y="596" font-size="15" font-weight="600" fill="#1f2328">Risk: TTC / CPA (per track)</text>
+<text x="62" y="616" font-size="12.5" fill="#57606a">closing speed, nominal and pessimistic TTC (+2 sigma), closest point</text>
+<text x="62" y="633" font-size="12.5" fill="#57606a">of approach, collision course; NONE .. CRITICAL. Without a reliable</text>
+<text x="62" y="650" font-size="12.5" fill="#57606a">velocity only the distance grade is given (ttc_valid = false).</text>
+<rect x="645" y="574" width="585" height="108" rx="8" fill="#eefaf0" stroke="#3d8b50" stroke-width="1.5"/>
+<text x="657" y="596" font-size="15" font-weight="600" fill="#1f2328">Collision warning (operator display)</text>
+<text x="657" y="616" font-size="12.5" fill="#57606a">CLEAR / CAUTION / WARNING for objects coming at the sensor</text>
+<text x="657" y="633" font-size="12.5" fill="#57606a">(collision course + TTC), with hysteresis.</text>
+<text x="657" y="650" font-size="12.5" fill="#57606a">Display only, not connected to vehicle control.</text>
+<line x1="1035" y1="540" x2="335" y2="574" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<line x1="620" y1="628" x2="645" y2="628" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<rect x="50" y="712" width="560" height="72" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+<text x="62" y="734" font-size="14" font-weight="600" fill="#1f2328">Event recorder (record_events:=true, same process)</text>
+<text x="62" y="754" font-size="12.5" fill="#57606a">5 s before / after CRITICAL risk, data loss, ego loss: RAM pre-buffer,</text>
+<text x="62" y="771" font-size="12.5" fill="#57606a">bounded writer thread -> rosbag2 MCAP + metadata.json, disk quota, cooldown</text>
+<rect x="635" y="712" width="595" height="72" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+<text x="647" y="734" font-size="14" font-weight="600" fill="#1f2328">Health and timing</text>
+<text x="647" y="754" font-size="12.5" fill="#57606a">sensor health (frame gaps, valid returns, coverage), per-stage timing,</text>
+<text x="647" y="771" font-size="12.5" fill="#57606a">latency, CPU / RAM -> /processing_stats (1 Hz), /diagnostics</text>
+<rect x="40" y="835" width="590" height="150" rx="8" fill="#eef4ff" stroke="#4a72c4" stroke-width="1.5"/>
+<text x="52" y="857" font-size="15" font-weight="600" fill="#1f2328">Topics  /helios/...</text>
+<text x="52" y="877" font-size="12.5" fill="#57606a">obstacles (ObstacleArray), tracks (TrackedObjectArray)</text>
+<text x="52" y="894" font-size="12.5" fill="#57606a">collision_warning (CollisionWarning)</text>
+<text x="52" y="911" font-size="12.5" fill="#57606a">processing_stats (ProcessingStats), recorder_events</text>
+<text x="52" y="928" font-size="12.5" fill="#57606a">obstacle_markers, track_markers, filtered / ground / obstacle points</text>
+<text x="52" y="945" font-size="12.5" fill="#57606a"></text>
+<rect x="655" y="835" width="585" height="150" rx="8" fill="#f6f8fa" stroke="#8c959f" stroke-width="1.5"/>
+<text x="667" y="857" font-size="15" font-weight="600" fill="#1f2328">Consumers (optional)</text>
+<text x="667" y="877" font-size="12.5" fill="#57606a">RViz2: rviz/detection.rviz</text>
+<text x="667" y="894" font-size="12.5" fill="#57606a">demo_visualizer.py -> demo_markers (display only)</text>
+<text x="667" y="911" font-size="12.5" fill="#57606a">status_panel.py (PyQt5): rates, latency, health</text>
+<text x="667" y="928" font-size="12.5" fill="#57606a">helios_benchmark: offline / synthetic evaluation</text>
+<text x="52" y="971" font-size="12.5" font-weight="600" fill="#c93c37">No cmd_vel / brake / throttle / steering output (checked by launch tests).</text>
+<line x1="640" y1="800" x2="335" y2="835" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+<line x1="630" y1="910" x2="655" y2="910" stroke="#8c959f" stroke-width="1.8" marker-end="url(#arr)"/>
+</svg>

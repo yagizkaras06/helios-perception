@@ -2,13 +2,13 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>helios_obstacle_detection</name>
-  <version>0.3.0</version>
+  <version>0.3.1</version>
   <description>
     Perception-only obstacle detection, multi-object tracking, collision warning and event
     recording for the RoboSense Helios 32 LiDAR (ROS 2 Jazzy). LiDAR data only; publishes no
     actuation commands.
   </description>
-  <maintainer email="maintainer@example.com">helios</maintainer>
+  <maintainer email="yagizkaras06@users.noreply.github.com">yagizkaras06</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

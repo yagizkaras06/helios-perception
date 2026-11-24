@@ -1,396 +1,245 @@
-# helios_obstacle_detection (v0.3.0)
+# Helios Perception
 
-RoboSense Helios 32 için ROS 2 Jazzy / C++17 **yalnızca algılama + tahmin** yığını:
-gelişmiş zemin segmentasyonu, menzile uyarlanabilir kümeleme, yönlü 3D kutular, **yalnızca LiDAR
-ile ego-hareket kestirimi**, Kalman/Hungarian **çoklu nesne takibi**, hareketli/sabit ayrımı, hız ve
-yön tahmini, belirsizliğe duyarlı **TTC / risk seviyesi**, sensör veri kaybı ve gecikme analizi,
-`/diagnostics`, RViz2 görselleştirme, rosbag2 kayıt/oynatma, otomatik testler ve ölçüm araçları.
+**Real-time LiDAR-only 3D perception and multi-object tracking for the RoboSense Helios 32 (ROS 2 Jazzy, C++17)**
 
-> **Araç kontrolüne bağlı değildir.** Gaz / fren / direksiyon / `cmd_vel` yayınlamaz, hiçbir
-> denetleyiciyle konuşmaz (launch testi bunu otomatik doğrular). Risk seviyeleri ve çarpışma
-> uyarısı yalnızca algılama / bilgi çıktısıdır; güvenlik işlevi olarak sertifikalı değildir.
-> Kamera, GPS, IMU, tekerlek odometrisi **kullanılmaz** — yalnızca `/rslidar_points`.
+[![build-and-test](https://github.com/yagizkaras06/helios-perception/actions/workflows/ci.yml/badge.svg)](https://github.com/yagizkaras06/helios-perception/actions/workflows/ci.yml)
+&nbsp;License: Apache-2.0 &nbsp;|&nbsp; [Türkçe](README.tr.md)
 
-**v0.3.0 ile gelenler** (ayrıntı: [CHANGELOG](CHANGELOG.rst), ölçümler: [v0.3 raporu](doc/v030_report.md))
-- Tıkanma farkındalıklı takip: TENTATIVE → CONFIRMED ⇄ OCCLUDED → LOST yaşam döngüsü, yeniden
-  tanıma, kısmi görünüm ölçüm modeli, birleşen kümelerin izlere bölünmesi, genişletilmiş
-  ilişkilendirme maliyeti; iz güdümlü statik arka plan haritası.
-- Daha erken hareket algılama (değişim noktası testi) ve açık belirsizlik durumları
-  (`velocity_status`, `track_confidence`, `relative_motion_only`).
-- Çarpışma uyarısı (`/helios/collision_warning` + RViz yazısı), sade RViz düzeni, yalnızca dinamik
-  nesnelerin çizilmesi.
-- Otomatik olay kaydı (5 s öncesi / sonrası, rosbag2 + `metadata.json`) ve tekrar oynatma.
+Helios Perception turns the raw point cloud of a single 32-beam LiDAR into tracked obstacles with
+velocity, motion state, time-to-collision and an operator collision warning. It runs on real
+hardware at the sensor rate (10 Hz) and uses no camera, GPS, IMU or wheel odometry: ego-motion
+is also estimated from the LiDAR alone. Every estimate carries its uncertainty, and estimates the
+LiDAR cannot support are marked as unreliable or unknown, never presented as certain.
 
-**Gereksinimler:** Ubuntu 24.04, ROS 2 Jazzy. LiDAR sürücüsü bu depoda **yoktur**:
-[rslidar_sdk](https://github.com/RoboSense-LiDAR/rslidar_sdk) ayrıca kurulur ve
-`sensor_msgs/PointCloud2` yayınlar (varsayılan `/rslidar_points`, `input_topic` ile değiştirilebilir).
-Diğer bağımlılıklar `rosdep install --from-paths src --ignore-src -y` ile kurulur.
+<p align="center">
+  <img src="assets/demo/demo.gif" width="900" alt="Helios Perception running on recorded Helios 32 data: tracked objects with velocity, heading and the collision warning panel">
+</p>
 
-## İçindekiler
-1. [Mimari](#mimari) · 2. [Algoritmalar](#algoritmalar) · 3. [Belirsizlik ve sınırlar](#belirsizlik-ve-sınırlar)
-4. [Topic'ler ve mesajlar](#topicler-ve-mesajlar) · 5. [Derleme / çalıştırma / test](#derleme--çalıştırma--test)
-6. [Kayıt ve tekrar oynatma](#kayıt-ve-tekrar-oynatma) · 6b. [Otomatik olay kaydı](#otomatik-olay-kaydı-event_recorder) · 7. [Ölçülen sonuçlar](#ölçülen-sonuçlar)
-8. [Bu kurulumda tespit edilenler](#bu-kurulumda-tespit-edilenler) · 9. [Ayar ipuçları](#ayar-ipuçları)
-
-## Mimari
-
-```
-rslidar_sdk ──/rslidar_points (PointCloud2 32x1800, XYZI, ~10 Hz)
-   │ abonelik: reliable, KeepLast(1) → tek-slot posta kutusu (yalnızca en yeni kare, birikme yok)
-   ▼ İŞÇİ İŞ PARÇACIĞI ─ PerceptionPipeline (ROS'tan bağımsız, testler/benchmark aynı kodu çalıştırır)
-   │  CloudProcessor     tek geçiş: alan doğrulama + NaN/Inf + menzil + ROI + öz-filtre + azimut kapsaması
-   │  voxel grid         yüke uyarlanabilir yaprak boyutu (bütçe aşılırsa kabalaşır, rahatlayınca geri döner)
-   │  CzmGroundSegmenter eşmerkezli bölge/halka/sektör hücreleri, hücre başına PCA (paralel), adaptif eşikler
-   │        ├──► ObstacleClusterer (menzile uyarlanabilir) → AABB + L-şekli OBB (paralel)
-   │        └──► EgoMotionEstimator (thread-pool görevi, eşzamanlı): düzlemsel nokta-düzlem ICP
-   │  MultiObjectTracker CV-Kalman + gating + Hungarian, yaşam döngüsü, hareket sınıflandırması
-   │  assessRisk         TTC (nominal + kötümser), CPA, çarpışma rotası, risk seviyesi
-   ├──► /helios/obstacles, /helios/tracks   (birincil çıktılar, önce yayınlanır)
-   └──► GÖRSELLEŞTİRME İŞ PARÇACIĞI (en yeni kare; yalnızca abone varsa): marker'lar + hata ayıklama bulutları
-EXECUTOR: 1 Hz istatistik/izleme zamanlayıcısı + diagnostic_updater (/diagnostics)
-```
-
-| Modül | Dosya |
+| | |
 |---|---|
-| İş parçacığı havuzu (kilitlenmesiz `parallelFor`) | `thread_pool.{hpp,cpp}` |
-| Bulut dönüştürme / filtre / azimut kapsaması | `cloud_processor.*` |
-| Zemin: CZM (varsayılan) / bölgesel RANSAC (v0.1) | `czm_ground_segmenter.*`, `ground_segmenter.*` |
-| Kümeleme (sabit / menzile uyarlanabilir) | `obstacle_clusterer.*` |
-| AABB + L-şekli yönlü kutu | `bounding_box.*` |
-| LiDAR ego-hareket | `ego_motion_estimator.*` |
-| Kalman, Hungarian, takipçi | `kalman_filter.hpp`, `hungarian.*`, `multi_object_tracker.*` |
-| TTC / risk | `collision_risk.*` |
-| Sensör sağlığı, gecikme, CPU/RSS | `sensor_health.*`, `resource_monitor.*`, `performance_monitor.*` |
-| Pipeline (ROS'suz) | `perception_pipeline.*` |
-| RViz marker'ları | `marker_builder.*` |
-| Sentetik Helios-32 + CLEAR-MOT metrikleri | `lidar_simulator.*`, `tracking_metrics.*` |
-| ROS düğümü / benchmark | `detection_node.cpp`, `benchmark_main.cpp` |
+| **Sensor** | RoboSense Helios 32 via [`rslidar_sdk`](https://github.com/RoboSense-LiDAR/rslidar_sdk), 10 Hz, 57,600 points per scan |
+| **Measured live** | 9.96 Hz in / out, 0 frames dropped by the detector, 13.9 ms receive-to-publish mean (18.6 ms p95), 18 % of one CPU core |
+| **Offline** | 4.6-5.9 ms per scan on real recordings (170-217 scans/s) |
+| **Synthetic accuracy** | MOTA 0.82-1.00 over 7 ground-truth scenarios; no object that never moved was classified as moving |
+| **Tests** | 106 automated checks: 10 gtest suites (unit, pipeline, system), 3 ROS launch tests, Python marker tests |
 
-**Bellek:** zemin segmentasyonunda sayma sıralaması (hücre başına tahsis yok), yeniden kullanılan
-tamponlar, `thread_local` çalışma alanları, sıfır kopya paylaşılan bulutlar, hata ayıklama bulutları
-ve marker'lar yalnızca abone varken üretilir.
+Details and method: [doc/benchmarks.md](doc/benchmarks.md).
 
-## Algoritmalar
+> **Perception only.** The stack publishes no `cmd_vel`, brake, throttle or steering command and
+> is not connected to vehicle control; launch tests check this. Risk levels and the collision
+> warning are information for an operator. This is not a safety-certified system.
 
-**Zemin (CZM, Patchwork++ esinli).** Yatay düzlem menzil bölgelerine → halkalara → sektörlere
-bölünür (uzakta daha iri hücreler). Her hücrede en alçak noktalardan tohum + yinelemeli PCA düzlemi
-(paralel). Hücre kabul testleri, içten dışa: diklik (normal ≤ 15°), düzlemsellik (çizgi benzeri
-destek reddi), düzlük (en küçük özdeğer, adaptif eşik), yakın halkalarda montaj yüksekliği önceliğine
-göre yükseklik (adaptif eşik), aynı yöndeki kabul edilmiş iç hücreye göre **merkez ve 4 köşede**
-süreklilik. Masa/platform/araç tavanı gibi yüksek düz yüzeyler zemin sayılmaz. Uzak hücrelerde iç
-referans zorunludur: Helios 32 0.9 m yükseklikte düz zeminde 15.4–25.6 m arasına hiç zemin ışını
-düşürmez, orada tek başına bulunan "düzlem" genellikle bir nesnenin tek ışın halkasıdır.
-Reddedilen/seyrek hücreler en yakın kabul edilmiş hücrenin düzlemiyle sınıflanır; o da yoksa
-yapılandırılmış öncül düzlem kullanılır ve **raporlanır** (`RELIABLE / DEGRADED / FAILED`).
+## Contents
 
-**Kümeleme.** Tolerans menzille büyür: `tol(r) = clamp(max(0.45, r·tan 1.5°), 0.45, 1.0)` (32 ışınlı
-sensörde ışın aralığı menzille doğrusal artar; sabit tolerans uzaktaki nesneyi şeritlere böler).
-**Yönlü kutu:** yakınlık kriterli arama tabanlı dikdörtgen uydurma (Zhang ve ark. 2017) — kısmen
-görünen (L-şekilli) araçlarda sağlam.
+1. [What it does](#what-it-does)
+2. [Architecture](#architecture)
+3. [Quick start without a LiDAR](#quick-start-without-a-lidar)
+4. [Installation](#installation)
+5. [Running with a Helios 32](#running-with-a-helios-32)
+6. [Recording, replay and event recording](#recording-replay-and-event-recording)
+7. [Topics and messages](#topics-and-messages)
+8. [Performance](#performance)
+9. [Known limitations](#known-limitations)
+10. [Repository layout, testing, roadmap, license](#repository-layout)
 
-**Ego-hareket (yalnızca LiDAR).** Ardışık zemin-dışı bulutlar düzlemsel (x, y, yaw) nokta-düzlem ICP
-ile hizalanır. Dinamik nesnelere karşı üç önlem: (1) önceki karede hareketli izlerin bölgeleri
-dışlanır, (2) Cauchy çekirdeği, (3) **hipotez uzlaşısı** — ICP optimumu, sıfır-hareket ve sabit-hız
-hipotezleriyle "geometrik olarak tutarlı nokta sayısı" üzerinden karşılaştırılır; daha basit hipotez
-neredeyse aynı desteği alıyorsa o seçilir (hareketli kalabalık sabit sensörü "sürükleyemez").
-Gauss-Newton Hessian'ından kovaryans (`σ²H⁻¹`) ve dejenerelik (koridor, açık alan) hesaplanır.
-Durumlar: `STATIONARY / MOVING / UNRELIABLE (kısa süreli sabit-hız tahmini, artan kovaryans) / UNKNOWN`.
+## What it does
 
-**Takip.** Yerel odometri çerçevesinde CV Kalman (Joseph formu). Ölçüm gürültüsü menzil, seyrek küme,
-nesne boyutu ve **o karenin ego-artışının belirsizliği** (yaw hatası × kaldıraç kolu) ile büyür.
-Ki-kare + metrik geçitli, `NIS + ln|S|` maliyetli global Hungarian atama. TENTATIVE → CONFIRMED
-(3 isabet) → COASTING → silme. Kutu boyutu ani değişirse (kısmi örtme / birleşme) ölçüm gürültüsü
-büyütülür ve merkez, hareket testine katılmaz.
+| Stage | Method |
+|---|---|
+| Input | Newest scan only (reliable, depth 1): no backlog when processing is late; field / NaN validation, range, ROI, vehicle self-filter, azimuth coverage check |
+| Ground | Concentric-zone (CZM) segmentation, inspired by Patchwork++: per-cell PCA planes, verticality / flatness / height / continuity tests, adaptive thresholds; status `RELIABLE / DEGRADED / FAILED` is reported |
+| Ego-motion | Planar point-to-plane ICP on non-ground points, areas of moving tracks excluded, robust loss, hypothesis check against zero / constant motion; covariance and degeneracy; state `STATIONARY / MOVING / UNRELIABLE / UNKNOWN` |
+| Static background | Voxel map in the odometry frame; space occupied for 10 s becomes background; updated after tracking so that people who stop are not absorbed |
+| Objects | Range-adaptive Euclidean clustering (uniform 3D grid neighbour search), axis-aligned and L-shape oriented boxes |
+| Tracking | Constant-velocity Kalman filter, chi-square gating, Hungarian assignment; lifecycle `TENTATIVE / CONFIRMED / OCCLUDED / LOST` with occlusion reasons and re-identification |
+| Motion | Change-point onset test on the motion window plus point-surface consistency: `STATIC / MOVING / UNKNOWN`; velocity status `RELIABLE / UNRELIABLE / UNKNOWN` |
+| Risk | Closing speed, nominal and pessimistic TTC (closing speed + 2 sigma), closest point of approach, collision course, level `NONE .. CRITICAL`; TTC only with a reliable velocity |
+| Warning | `CLEAR / CAUTION / WARNING` for objects coming at the sensor, with hysteresis |
+| Health | Frame gaps, time jumps, valid-return ratio, azimuth coverage, `NO_DATA`; per-stage timing, latency, CPU / RAM on `/processing_stats` and `/diagnostics` |
+| Event recorder | Optional: 5 s before / after a critical risk, data loss or ego loss into rosbag2 (MCAP) with `metadata.json` |
 
-**Hareketli / sabit ayrımı** iki bağımsız kanıt + histerezis ister:
-* pencere içi (1 s) **merkez regresyonu**: hız > 0.4 m/s ve > 3σ ve yer değiştirme > 0.3 m;
-* **nokta-yüzey tutarlılığı**: izin şimdiki noktaları ile ~0.5 s önceki noktaları arasındaki 2B en
-  yakın komşu mesafelerinin medyanı (odometri çerçevesinde). Statik bir nesnenin yüzeyleri hangi yüzü
-  görünürse görünsün çakışır → hareket eden sensörde kutu merkezinin bakış açısı kaynaklı kaymasına
-  bağışıktır. (Bu, sentetik hareketli-sensör senaryosunda yanlış "MOVING" oranını %7.9'dan %0'a indirdi.)
-* Kanıt yoksa sonuç **UNKNOWN** kalır; ego-hareket bilinmiyorsa tüm izler anında UNKNOWN olur.
+## Architecture
 
-**Statik arka plan modeli ("10 s kıpırdamayan statiktir").** Zemin dışı noktalar odometri
-çerçevesinde 0.15 m'lik voxel'lerde biriktirilir; en az `static_map.static_time_s` (10 s) boyunca
-karelerin ≥%50'sinde dolu kalan voxel'ler **arka plan** olur, 5 s görülmeyenler unutulur. Sensör
-sabitken her tarama arka plan / ön plan noktalarına ayrılıp **ayrı ayrı kümelenir** (duvarın
-yanındaki kişi duvardan ayrılır); arka plan kümeleri STATIC, geri kalan her şey dinamiktir:
-hareket edenler MOVING, yeni gelen / duran ama 10 s'yi doldurmamış olanlar UNKNOWN. 10 s
-kıpırdamayan kişi statiğe döner, yürümeye başlayınca hemen yeniden dinamik olur. Açılıştan sonraki
-ilk 10 s'de her şey dinamik görünür ("learning static background"). Sensör hareket ederken
-nesneler kısa süre ve değişen açılardan görüldüğü için bu kural uygulanmaz, kanıt tabanlı
-sınıflandırma kullanılır. Işın izleme yok: statik bir nesnenin boşalttığı yer en fazla 5 s arka plan
-kalır.
+<p align="center"><img src="assets/diagrams/architecture.svg" width="900" alt="Data flow from the Helios 32 point cloud through ground segmentation, ego-motion, static map, clustering, tracking, risk and collision warning to ROS topics"></p>
 
-**TTC / risk.** LiDAR merkezli `ego_radius` dairesine göre: kapanma hızı `c = -u·v_rel`,
-`TTC = açıklık / c`, **kötümser TTC** `= açıklık / (c + 2σ_c)`, CPA (en yakın yaklaşma) ve 2σ yanal
-bant ile çarpışma rotası. `v_rel = v_nesne − v_ego − ω×p`, kovaryansı nesne + ego (+ kaldıraç) toplamı.
-STATIC izlerde nesne hızı 0 (±0.05 m/s) modellenir. Hızı güvenilir olmayan izlerde (genç iz, büyük
-yapı, ego bilinmiyor) TTC hesaplanmaz, risk yalnızca mesafeye dayanır (`ttc_valid=false`).
-Seviyeler: `NONE / LOW / MEDIUM / HIGH / CRITICAL`.
-Kare özeti `max_risk_level` (onaylı izlerin en yükseği): LiDAR **STATIONARY** iken STATIC izler
-sayılmaz; ikisi de durduğu için yaklaşamazlar (ör. sensörün 0.5 m yanındaki masa özeti sürekli
-CRITICAL yapıyordu). İz başına seviyeler değişmez; ego hareket ederken sabit nesneler sayılır
-(`risk.summary_ignore_static_when_stationary`, varsayılan `true`).
+The pipeline (`PerceptionPipeline`) has no ROS dependency: the ROS node, the tests and the
+benchmark run the same code. The node publishes the primary outputs (`/tracks`, `/obstacles`)
+first; markers and debug clouds are built on a separate thread and only when something
+subscribes. Source files per stage are listed in [README.tr.md](README.tr.md#mimari).
 
-**Sensör sağlığı / veri kaybı.** Başlık damgalarından kare boşluğu ve kaçırılan kare tahmini, zaman
-sıçraması (bag döngüsü, sürücü yeniden başlatma → takipçi/ego sıfırlanır), geçerli dönüş oranı
-(kirli/kapalı pencere), 10°'lik azimut kapsaması (paket kaybı/örtme), ani nokta düşüşü, veri zaman
-aşımı (`NO_DATA`, marker'lar temizlenir, eski veri yeniden yayınlanmaz).
+## Quick start without a LiDAR
 
-**Gecikme.** Ana bilgisayar tarafı: alım → işçi başlangıcı (`queue_wait`), aşama süreleri, alım →
-birincil çıktı yayını (`rx_to_publish`). Sensör saati senkron değilse (PTP/GPS yok) mutlak
-sensör→ana bilgisayar gecikmesi **ölçülemez**; düğüm bunu tespit eder ve yalnızca teslim jitter'ını
-raporlar (bkz. [tespit edilenler](#bu-kurulumda-tespit-edilenler)).
-
-**Uyarlanabilirlik.** CZM yükseklik/düzlük eşikleri kayan ortalama+σ ile; voxel boyutu işlem
-süresi bütçesine göre (`adaptive.*`); kümeleme toleransı menzile göre.
-
-## Belirsizlik ve sınırlar
-
-LiDAR'ın tek başına güvenilir sağlayamadığı sonuçlar kesinmiş gibi sunulmaz:
-
-* Hızlar **zemine göre**dir ancak yalnızca `velocity_reliable=true` iken güvenilir. Her hız
-  `speed_sigma`, `velocity_covariance` ve yön `heading_sigma` ile gelir; yön yalnızca MOVING izlerde
-  geçerlidir.
-* Ego-hareket yalnızca LiDAR'dan gelir: düzlemsel model (roll/pitch/z yok), nokta zaman damgası
-  olmadığı için tarama içi bozulma düzeltmesi yok (10 m/s'de tarama ~1 m yayılır), çok seyrek veya
-  dejenere sahnelerde (tek duvar, uzun koridor, açık alan) `UNRELIABLE/UNKNOWN` olur ve bu durumda
-  hareket sınıfları UNKNOWN'a döner. ~0.3 m/s altındaki ego "sürünme"si STATIONARY görülebilir
-  (uzlaşı eşiği 6 cm/kare).
-* TTC sensör merkezli bir daireye göredir (araç gövdesi bu pakette bilinmiyor, `risk.ego_radius`).
-  Sabit göreli hız varsayımı; manevra eden nesnelerde kötümser TTC kullanın.
-* Kutu merkezi, nesnenin görünen kısmının merkezidir; örtme ve bakış açısı değişimi bunu kaydırır
-  (gürültü modelinde ve sınıflandırmada hesaba katılır, ancak yok edilemez).
-* Sınıf (yaya/araç) tahmini yapılmaz.
-* Sentetik doğruluk sayıları basitleştirilmiş bir simülatörden gelir (düz zemin, tarama içi hareket
-  yok, yaklaşık ışın düzeni): gerçek dünya için **üst sınır** olarak okuyun. Gerçek etiketli veri
-  olmadan gerçek algılama doğruluğu ölçülemez; bag üzerinde yalnızca tutarlılık metrikleri raporlanır.
-
-## Topic'ler ve mesajlar
-
-Varsayılan namespace `helios`. Tüm çıktılar giriş başlığını (ns damga + `frame_id`) taşır.
-
-| Topic | Tip | Not |
-|---|---|---|
-| `/rslidar_points` (giriş) | sensor_msgs/PointCloud2 | sürücüden; yeniden yayınlanmaz |
-| `/helios/tracks` | helios_obstacle_detection/TrackedObjectArray | **asıl çıktı**: kalıcı ID, kutu, hız±σ, yön, TTC, CPA, risk, ego durumu |
-| `/helios/obstacles` | helios_obstacle_detection/ObstacleArray | kare bazlı tespitler (AABB + OBB) |
-| `/helios/track_markers` | visualization_msgs/MarkerArray | risk renkli OBB, `ID / MOV-STAT / hız±σ / yön / mesafe / TTC[kötümser] / risk` etiketi, hız oku, tahmini göreli yörünge, 2σ elips, iz, ego ayak izi + hız, durum paneli |
-| `/helios/obstacle_markers` | MarkerArray | kare bazlı AABB (v0.1 uyumlu) |
-| `/helios/filtered_points`, `ground_points`, `obstacle_points`, `obstacle_clusters` | PointCloud2 | hata ayıklama (kümeler risk renkli) |
-| `/helios/processing_stats` | helios_obstacle_detection/ProcessingStats | 1 Hz: FPS, CPU, RSS, gecikme, veri kaybı, saat senkronu, zemin, ego, takip, aşama süreleri |
-| `/diagnostics` | diagnostic_msgs/DiagnosticArray | `LiDAR input`, `Scan quality`, `Time synchronization`, `Processing`, `Ground segmentation`, `Ego motion`, `Tracking` (`rqt_robot_monitor` ile izlenebilir) |
-
-RViz'de varsayılan olarak **STATIC (arka plan) izler çizilmez**; MOVING ve UNKNOWN (dinamik ama
-şu an hareketsiz) izler çizilir (`visualization.show_static`, `visualization.show_unknown`).
-STATIC izler `/helios/tracks` çıktısında ve risk hesabında yer almaya devam eder. RViz renk anahtarı: açık mavi NONE, yeşil LOW, sarı MEDIUM, turuncu HIGH, kırmızı CRITICAL;
-yarı saydam = COASTING (tahmin). Etiketler ASCII (RViz yazı tipinde Türkçe karakter yok).
-
-## Derleme / çalıştırma / test
+A ray-casting simulator of a Helios-32-like sensor ships with the package. It is the same one the
+tests and the accuracy benchmark use. `synthetic_lidar` publishes its scans, so the whole stack
+and the demo view run without hardware:
 
 ```bash
-cd ~/helios_ws/src
+ros2 launch helios_obstacle_detection github_demo.launch.py mode:=synthetic scenario:=crossing status_panel:=true
+```
+
+Scenarios: `crossing`, `approach`, `ego_motion` (moving sensor), `occlusion`, `merge_split`,
+`wall_walk`, `start_stop`. Accuracy against the simulator's ground truth:
+
+```bash
+ros2 run helios_obstacle_detection helios_benchmark synthetic --scenario all
+```
+
+The simulated world is simplified (flat ground, no intra-scan motion). It is meant for trying the
+software and for regression tests, not as evidence of real-world accuracy.
+
+## Installation
+
+Requirements: Ubuntu 24.04, ROS 2 Jazzy. The LiDAR driver is not part of this repository.
+
+```bash
+mkdir -p ~/helios_ws/src && cd ~/helios_ws/src
+git clone https://github.com/yagizkaras06/helios-perception.git helios_obstacle_detection
+cd ~/helios_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select helios_obstacle_detection
+rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
+colcon build --packages-select helios_obstacle_detection --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash
-
-ros2 launch helios_obstacle_detection detection.launch.py              # yalnız algılama
-ros2 launch helios_obstacle_detection detection.launch.py rviz:=true   # + RViz2
-ros2 run helios_obstacle_detection obstacle_report.py                  # canlı tablo (izler + istatistik)
-ros2 run helios_obstacle_detection perf_report.py --duration 60 --out ~/perf.md   # FPS/CPU/gecikme raporu
-ros2 topic echo /diagnostics
-
-# testler (10 gtest paketi + 2 ROS launch testi); ROS_DOMAIN_ID ile canlı sistemden yalıtın
-ROS_DOMAIN_ID=77 colcon test --packages-select helios_obstacle_detection && colcon test-result --verbose
-
-# çevrimdışı ölçüm
-ros2 run helios_obstacle_detection helios_benchmark synthetic                   # yer gerçekli doğruluk
-ros2 run helios_obstacle_detection helios_benchmark synthetic --ego oracle      # mükemmel ego ile üst sınır
-ros2 run helios_obstacle_detection helios_benchmark bag ~/helios_ws/bags/helios_test_20s --csv frames.csv
 ```
 
-Testler: Hungarian (kaba kuvvete karşı), Kalman yakınsaması/PSD, takipçi (kesişen nesnelerde ID,
-hareketli sensörden statik nesne, coasting/silme/zaman sıçraması), ego-hareket (hareket kurtarma,
-sabit sensör, koridor dejenereliği, boşluk/zaman aşımı), CZM (kutu, eğim, yüksek masa, başarısızlık,
-adaptif eşik, paralel=sıralı), TTC/risk, sağlık (boşluk, sıçrama, saat senkronu, kapsama), iş
-parçacığı havuzu (istisna, kilitlenmezlik), OBB, uyarlanabilir kümeleme, simülatörle uçtan uca
-sistem testleri (MOTA, ID değişimi, hız, sınıflandırma, TTC, kare düşmesi) ve **düğümün hiçbir
-aktüasyon konusu açmadığını** doğrulayan launch testi.
+## Running with a Helios 32
 
-VS Code (snap) terminalinden RViz2 açılırken `libpthread ... __libc_pthread_init` hatası alınırsa
-RViz2'yi normal bir terminalden başlatın.
-
-## Kayıt ve tekrar oynatma
-
-Bu makinedeki `ros2 bag record/play` (rosbag2 CLI) `Couldn't parse log level: '--log-level info'`
-hatasıyla başlamıyor (veri değil CLI hatası; `sudo apt upgrade` ile rosbag2 güncellemesi muhtemelen
-düzeltir — sistem paketlerine dokunulmadı). Bu yüzden `rosbag2_py` tabanlı `bag_tool.py` kullanılır
-(MCAP, `ros2 bag info` ile okunabilir):
+Start [`rslidar_sdk`](https://github.com/RoboSense-LiDAR/rslidar_sdk) as usual. It publishes
+`sensor_msgs/PointCloud2` on `/rslidar_points`. Then:
 
 ```bash
-# ham LiDAR
-ros2 run helios_obstacle_detection bag_tool.py record -o ~/helios_ws/bags/kayit1 --duration 30
-# ham LiDAR + tüm algılama çıktıları + diagnostics
-ros2 run helios_obstacle_detection bag_tool.py record -o ~/helios_ws/bags/kayit2 --preset perception
-ros2 run helios_obstacle_detection bag_tool.py info ~/helios_ws/bags/kayit1
-# algılama çalışırken kayıt
-ros2 launch helios_obstacle_detection detection.launch.py record:=true record_dir:=~/helios_ws/bags/kayit3
-
-# canlı sistemle KARIŞMADAN tekrar oynatma: /bag/rslidar_points + ayrı namespace (helios_bag)
-ros2 launch helios_obstacle_detection replay.launch.py bag:=$HOME/helios_ws/bags/helios_test_20s rviz:=true loop:=true
+ros2 launch helios_obstacle_detection detection.launch.py                     # detector
+ros2 launch helios_obstacle_detection detection.launch.py rviz:=true          # + RViz2 (engineering view)
+ros2 launch helios_obstacle_detection detection.launch.py record_events:=true # + event recorder, one process
+ros2 launch helios_obstacle_detection github_demo.launch.py status_panel:=true  # presentation view on the running stack
+ros2 run helios_obstacle_detection obstacle_report.py                         # live table in the terminal
 ```
-## Otomatik olay kaydı (event_recorder)
 
-Kritik bir olay olduğunda olayın **5 s öncesini ve 5 s sonrasını** kaydeder: ham LiDAR + algılama
-çıktıları + dedektörün diagnostics mesajları, rosbag2 (MCAP) olarak ve okunabilir `metadata.json`
-ile. Ayrı bir ROS düğümüdür (`event_recorder`); yazma hatasında dedektör çalışmaya devam eder.
-Varsayılan olarak **kapalıdır**.
+Mounting is configured in [`config/detection.yaml`](config/detection.yaml). The values that
+matter first are `ground.expected_height` (minus the mount height, currently -0.90 m),
+`filter.self_filter` (vehicle body box) and `risk.ego_radius`. Different topic:
+`input_topic:=/other_points`.
 
-`record_events:=true` ile dedektör ve kaydedici **aynı süreçte iki ayrı düğüm** olarak başlar
-(`perception_node`). Böylece ~1 MB'lık LiDAR bulutları sürece bir kez gelir. Ayrı süreçte çalışan
-bir kaydedici bu makinede sorun çıkardı: reliable abonelik sürücüyü tıkayıp 1–2 s'lik veri
-kesintilerine yol açtı, best-effort abonelik ise kareleri kaybetti. Tek süreçte 3 dakikalık canlı
-ölçüm: veri kesintisi yok, giriş ≈10 Hz, CPU %36 (dedektör + kaydedici, tek çekirdek), RAM ~165 MB.
-Başka bir makinedeki dedektörü kaydetmek için tek başına `ros2 run helios_obstacle_detection
-event_recorder` da kullanılabilir (ham abonelik varsayılan olarak best-effort; eksik kareler
-`metadata.json`'da `raw_input_missing_frames_estimate` olarak sayılır).
+Notes from the development setup (unsynchronised sensor clock, the desk next to the sensor, ROS
+discovery on a shared Wi-Fi network): [doc/field_notes.md](doc/field_notes.md). If other ROS 2
+machines share the network, `export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` keeps discovery on the
+local host.
+
+## Recording, replay and event recording
+
+`scripts/bag_tool.py` records and plays MCAP with `rosbag2_py`.
 
 ```bash
-# başlatma (dedektörle aynı namespace; topic adları ve giriş QoS'u aynı detection.yaml'dan)
-ros2 launch helios_obstacle_detection detection.launch.py record_events:=true
-ros2 launch helios_obstacle_detection detection.launch.py record_events:=true events_dir:=/mnt/usb/events
-
-# olayları listele (zaman, neden, süre, boyut, uyarılar, tekrar oynatma komutu)
-ros2 run helios_obstacle_detection bag_tool.py events            # ~/helios_ws/logs/events
-
-# tekrar oynatma (canlı sistemle karışmaz; /bag/... ve helios_bag namespace'i)
-#  a) dedektör ham veri üzerinde yeniden çalışır (güncel kod / parametrelerle)
-ros2 launch helios_obstacle_detection replay.launch.py bag:=<olay>/bag rviz:=true
-#  b) kaydedilmiş çıktılar olduğu gibi (izler, kutular, uyarı, istatistik) RViz'de
-ros2 launch helios_obstacle_detection replay.launch.py bag:=<olay>/bag mode:=recorded rviz:=true
+ros2 run helios_obstacle_detection bag_tool.py record -o my_run --preset perception --duration 60
+ros2 launch helios_obstacle_detection replay.launch.py bag:=my_run rviz:=true loop:=true
+ros2 launch helios_obstacle_detection github_demo.launch.py mode:=replay bag:=my_run status_panel:=true
 ```
-Olay kaydındaki topic adları ve namespace `metadata.json`'dan otomatik okunur
-(`bag_input_topic:=`, `bag_namespace:=` ile değiştirilebilir). `mode:=recorded`'da ham bulut RViz'in
-"Nokta bulutu" katmanına (`/helios_bag/filtered_points`) yönlendirilir.
 
-**Tetikleyiciler** (kenar algılamalı: aynı durum her mesajda yeni olay üretmez)
+Replay publishes on `/bag/rslidar_points` and runs its own detector in the `/helios_bag`
+namespace, so it can run next to a live system.
 
-| Neden | Koşul | Başlangıçta |
+With `record_events:=true`, the event recorder keeps a RAM pre-buffer. On a CRITICAL risk, a data
+loss or a loss of the ego estimate, it writes 5 s before and 5 s after the event (raw scan, tracks,
+markers, warning, statistics) with `metadata.json`. The metadata holds the trigger, the window
+actually covered, integrity counters and the effective parameters. Disk quota, per-event limit and
+a per-trigger cooldown keep it bounded. Events replay with
+`replay.launch.py bag:=<event>/bag [mode:=recorded]`.
+
+## Topics and messages
+
+Default namespace `helios`. All outputs keep the input header (stamp and `frame_id`).
+
+| Topic | Type | Content |
 |---|---|---|
-| `critical_risk` | En yüksek risk CRITICAL'a geçer (izin ID'si kaydedilir). STATIC arka plan sayılmaz; statik harita öğrenirken yalnızca hareket etmiş nesneler sayılır | İlk mesajda zaten CRITICAL ise önce en az `rearm_s` temizlenmesi gerekir |
-| `no_data` | Akmakta olan LiDAR verisi kesilir (`STATUS_NO_DATA`) | Hiç veri gelmeden NO_DATA normaldir, olay değildir |
-| `ego_unknown` | Kullanılabilir ego tahmini `EGO_UNKNOWN`'a düşer | İlk geçerli tahminden önce, ve veri kesintisi sonrası yeniden başlarken olay değildir |
+| `/rslidar_points` (input) | `sensor_msgs/PointCloud2` | from the driver |
+| `/helios/tracks` | `TrackedObjectArray` | main output: persistent id, box, velocity +- sigma, heading, motion and lifecycle state, TTC / CPA, risk, ego-motion state |
+| `/helios/obstacles` | `ObstacleArray` | per-scan detections (axis-aligned and oriented boxes) |
+| `/helios/collision_warning` | `CollisionWarning` | `CLEAR / CAUTION / WARNING`, threat track, TTC, distance |
+| `/helios/processing_stats` | `ProcessingStats` | 1 Hz: rates, drops, latency, stage timing, CPU / RAM, ground / ego / tracking state |
+| `/helios/track_markers`, `/helios/obstacle_markers` | `visualization_msgs/MarkerArray` | RViz |
+| `/helios/filtered_points`, `ground_points`, `obstacle_points`, `obstacle_clusters` | `PointCloud2` | debug clouds (only with subscribers) |
+| `/helios/recorder_events` | `std_msgs/String` (JSON) | event recorder start / merge / end |
+| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | input, scan quality, time sync, processing, ground, ego-motion, tracking, recorder |
 
-Bir durum en az `rearm_s` (1 s) ortadan kalkmadan / geçerli olmadan tekrar tetiklemez. Kayıt sürerken
-gelen tetikleyiciler aynı olaya eklenir ve "sonrası" penceresini uzatır (en çok `max_event_s`).
+Message definitions with field comments: [`msg/`](msg/).
 
-**Klasör örneği**
-```
-~/helios_ws/logs/events/
-└── 20261123_221835_217_critical_risk/
-    ├── metadata.json
-    └── bag/
-        ├── bag_0.mcap
-        └── metadata.yaml
-```
-`metadata.json` içeriği: `event_id`, `software_version`, `trigger_wall_time`, `reasons` (tür, zaman,
-olaya göre saniye, `track_id`, açıklama), `window` (istenen / **gerçekten kapsanan** öncesi süresi ve
-neden kısa kaldığı: `buffer_bytes` = RAM sınırı, `history` = kaydedici / veri daha yeni başladı;
-sonrası, bitiş nedeni `post_window` / `max_duration` / `shutdown`), topic başına mesaj ve bayt
-sayıları, `integrity` (sıra numarası boşlukları = yazma kuyruğunda düşen mesajlar, sıra dışı mesaj,
-disk bütçesiyle kesilme, yazma hatası), `time_jumps` (duvar saati ve sensör damgası sıçramaları),
-dedektörün ve kaydedicinin **etkin parametreleri** ve tekrar oynatma komutları.
+## Performance
 
-**Zaman**: pencereler bilgisayarın monotonik saatiyle yönetilir (LiDAR saati senkron değildir,
-kullanılmaz). Mesajlar bayt bayt aynı yazılır (header damgaları korunur). Bag zamanı =
-tetik anının duvar saati + monotonik fark; duvar saati sıçrarsa kayıt sırası bozulmaz, sıçrama
-`time_jumps`'a yazılır. Her mesaja artan bir sıra numarası verilir; tampondan canlı kayda geçiş aynı
-kilit altında yapılır (kayıp / çift kayıt yok, yazıcı sürekliliği doğrular).
+Measured on an Intel i7-13620H laptop. Full tables, scenario descriptions and method:
+[doc/benchmarks.md](doc/benchmarks.md).
 
-**Parametreler** (`config/detection.yaml` → `events.*`)
-
-| Parametre | Varsayılan | Anlamı |
-|---|---|---|
-| `output_dir` | `~/helios_ws/logs/events` | olay klasörü (`events_dir:=` launch argümanı ile de) |
-| `pre_event_s` / `post_event_s` | 5 / 5 | öncesi / sonrası [s] |
-| `max_event_s` | 60 | birleşen tetikleyicilerle en uzun olay [s] |
-| `rearm_s` | 1.0 | tekrar tetikleme için gereken süre [s] |
-| `cooldown_s` | 30 | bir olay bittikten sonra aynı tür tetikleyici bu süre yeni olay açmaz (sürekli tekrarlayan durum diski doldurmasın; sayısı diagnostics'te) |
-| `trigger_critical_risk` / `trigger_no_data` / `trigger_ego_unknown` | true | tetikleyiciler |
-| `risk_ignore_static` | true | STATIC arka plan (sensör yanındaki masa) risk olayı üretmez |
-| `record_track_markers` / `record_collision_warning` | true | RViz kutuları ve uyarı da kaydedilir |
-| `buffer_max_mb` | 192 | RAM öncesi tamponu (ham Helios ≈ 9 MB/s → 5 s ≈ 46 MB) |
-| `queue_max_mb` | 256 | RAM yazma kuyruğu; dolarsa mesaj düşer ve raporlanır |
-| `max_event_disk_mb` | 1024 | olay başına disk sınırı (aşılırsa olay kesilir, işaretlenir) |
-| `max_total_disk_mb` | 4096 | klasör toplamı; aşılırsa yeni olay kaydedilmez |
-| `min_free_disk_mb` | 1024 | diskte bu kadar boş yer kalmazsa yeni olay kaydedilmez |
-| `raw_reliability` | `best_effort` | kaydedicinin ham LiDAR aboneliği. `best_effort` sürücüyü asla yavaşlatmaz (canlıda `reliable` abonelik sürücüyü tıkayıp 1–2 s'lik veri kesintilerine yol açtı); aşırı yükte kayda birkaç kare eksik düşebilir. `match_detector` = dedektörün `input_reliability`'si |
-
-Bir olay ≈ 10 s × ~9.5 MB/s ≈ **100 MB** (ham bulut baskın). Durum `/diagnostics`'te
-"event_recorder: Event recorder" başlığıyla görünür (tampon süresi / boyutu, kuyruk, düşen mesajlar,
-disk, son hata). Disk dolarsa veya yazılamazsa ERROR; `/<ns>/recorder_events` (std_msgs/String,
-JSON) olay başlangıç / birleşme / bitişlerini yayınlar.
-
-## Ölçülen sonuçlar
-
-Makine: 16 çekirdek, 31 GB RAM, Ubuntu 24.04, ROS 2 Jazzy, Release (`-O3`), `threads: 2`.
-Ayrıntılı tablolar: [`doc/`](doc/).
-
-**Gerçek zamanlı (kayıtlı Helios bag'i 10 Hz'de döngüde oynatılarak, 45 s, varsayılan ayarlar)** —
-[`doc/live_replay_perf.md`](doc/live_replay_perf.md)
-
-| Ölçüt | Değer |
+| Live sensor (817 s) | |
 |---|---|
-| Giriş / çıkış FPS | 10.03 / 10.03 Hz, 0 atlanan, 0 aşırı yük |
-| CPU (tüm düğüm, %100 = 1 çekirdek) | **%21.3** ort. (düğüm raporu) — harici `/proc` ölçümü: %21.2 |
-| Bellek | RSS 67 MB, 19 iş parçacığı |
-| Gecikme: alım → `/tracks` yayını | **13.8 ms ort., 15.5 ms p95, 23.4 ms maks** |
-| Aşamalar (ort. ms) | ROI 1.0 · voxel 2.2 · zemin 0.5 · kümeleme 9.0 · kutu 0.5 · ego 5.8 (eşzamanlı) · takip+risk 0.2 |
-| Sensör→ana bilgisayar gecikmesi | **ölçülemez**: LiDAR saati senkron değil (bkz. aşağı); teslim jitter'ı p95 13.9 ms |
+| Input / output | 9.96 / 9.96 Hz; 8,145 frames received, 8,145 processed, 0 dropped by the detector |
+| Pipeline per frame | 13.7 ms mean, 18.4 ms p95 |
+| Receive to `/tracks` | 13.9 ms mean, 18.6 ms p95, 31.3 ms max |
+| CPU / RAM | 17.9 % of one core, 139-163 MB (with event recorder) |
 
-**Çevrimdışı (aynı bag, olabildiğince hızlı, 3 tur)** — [`doc/benchmark_bag_czm.md`](doc/benchmark_bag_czm.md):
-pipeline 4.9 ms ort. / 5.1 ms p95, ~205 kare/s, kare başına 7.2 ms CPU. Gerçek zamanlı süreler
-~2.8× daha uzun; düşük yükte CPU frekans ölçeklemesi ve soğuk önbellek etkisi (10 Hz'de çekirdekler
-boşta bekliyor). 1 vs 15 işçi: 1–2 işçi bu nokta yoğunluğunda en hızlı ve en düşük jitter'lı
-(büyük havuzun uyandırma maliyeti kazancı aşıyor) — varsayılan `threads: 2`.
+| Synthetic (ground truth) | MOTA | IDF1 | Velocity RMSE |
+|---|---|---|---|
+| Still sensor, pedestrians and cars | 0.837 | 0.906 | 0.17 m/s |
+| Sensor at 3 m/s with a turn, 40 obstacles | 0.823 | 0.813 | 0.29 m/s |
+| Object driving at the sensor (TTC MAE 0.02 s) | 0.992 | 0.996 | 0.02 m/s |
+| Occlusions 0.5-2.5 s | 0.966 | 0.983 | 0.09 m/s |
 
-**Gerçek bag tutarlılığı** (etiket yok → doğruluk değil, tutarlılık): ego 600/603 kare STATIONARY
-(sensör gerçekten sabit; 3 kare = her turun ilk karesi), statik izlerin hız gürültüsü 0.00 m/s,
-kare başına ~30 onaylı iz, iz ömrü medyanı 20 s (= kaydın tamamı; RANSAC zemini ile 11.7 s), sahte
-"MOVING" yok.
+Sensor-to-host latency cannot be measured here: the Helios clock is not synchronised (no PTP / GPS).
+The node detects this and reports delivery jitter instead.
 
-**Sentetik doğruluk (ışın izlemeli Helios-32 benzeri tarama, yer gerçeği, 10 s / senaryo)** —
-[`doc/benchmark_synthetic_lidar_ego.md`](doc/benchmark_synthetic_lidar_ego.md)
+## Known limitations
 
-| Senaryo | MOTA | MOTP | Kesinlik / Duyarlılık | ID değ. | Hız RMSE / hız MAE | Yön MAE | Hareketli→MOVING | Statik→MOVING | TTC MAE |
-|---|---|---|---|---|---|---|---|---|---|
-| Sabit sensör, yayalar + araçlar | 0.945 | 0.19 m | 0.975 / 0.975 | 4 | 0.26 / 0.08 m/s | 2.2° | 322/335 (UNKNOWN 13) | **0 / 362** | 0.41 s |
-| Sensör 3 m/s + dönüş, 40 statik engel | 0.839 | 0.29 m | 0.948 / 0.899 | 28 | 0.50 / 0.11 m/s | 2.6° | 186/253 (STATIC 10) | **0 / 1813** | 0.28 s |
-| Sabit sensör, nesne 2 m/s ile üzerine | 0.992 | 0.17 m | 0.992 / 1.000 | 0 | 0.01 / 0.00 m/s | 0.2° | 91/93 | 0 / 280 | **0.02 s** |
+* **Accuracy on real data is not measured.** The recordings have no labels, so they are used for
+  timing and consistency only. Accuracy numbers come from a simplified simulator and are an upper
+  bound.
+* **Tested with a stationary sensor.** Live tests were indoors with the sensor on a desk. Moving-sensor
+  behaviour has only been evaluated in simulation.
+* **LiDAR-only ego-motion is planar** (x, y, yaw) and has no intra-scan deskew. At 10 m/s a scan
+  smears by ~1 m. In degenerate scenes (long corridor, open field, sparse returns) the state becomes
+  `UNRELIABLE` / `UNKNOWN` and motion classes fall back to `UNKNOWN`.
+* **TTC is computed against a circle around the sensor** (`risk.ego_radius`), assuming constant
+  relative velocity. The vehicle footprint is not modelled.
+* **Box centres are the centres of the visible part.** Occlusion and viewpoint changes shift them.
+  This is modelled in the measurement noise but cannot be removed.
+* **No object classes** (pedestrian / vehicle).
+* **Track identity after occlusion.** Re-association to a different nearby small object was
+  observed on live data, and short-lived tentative tracks are frequent in cluttered indoor scenes.
+* **Indoors the ground is often `DEGRADED`.** Little floor is visible from a desk-mounted sensor,
+  and a fallback plane is used. This is reported in `/processing_stats`.
+* **Input gaps upstream of this package.** On the development setup, scans went missing at the
+  driver output after Ethernet link interruptions, while the network interface still received the
+  full packet rate. Restarting the driver restored 10 Hz. The detector reports such gaps
+  (`SENSOR_DEGRADED` / `NO_DATA`) but cannot repair them.
+* The engineering RViz profile (`rviz/detection.rviz`) labels its collision banner in Turkish ASCII.
+  The demo profile is English by default (`language:=en|tr`).
 
-* Ego-hız hatası (yalnızca LiDAR): sabit sensörde 0.000 m/s, 3 m/s + 0.05 rad/s dönüşte 0.022 m/s.
-  "Mükemmel ego" (`--ego oracle`) ile sonuçlar aynı → kalan hatalar ego kaynaklı değil, kümeleme /
-  örtme kaynaklı ([`doc/benchmark_synthetic_oracle_ego.md`](doc/benchmark_synthetic_oracle_ego.md)).
-* Kötümser TTC gerçek TTC'den büyük kalma oranı: %9.1 / %5.8 / %0.
-* Bilinen kalan hatalar: yakındaki statik nesneyle aynı kümeye düşen yaya (10 kare STATIC),
-  örtmeden sonra yeniden başlayan izler (ID değişimi), uzak/arkadaki küçük engellerin kaçırılması.
-* CZM vs RANSAC (düz sentetik dünyada RANSAC'ın ideal durumu): eşdeğer (0.839 vs 0.841 MOTA);
-  gerçek bag'de CZM iz ömrü belirgin daha uzun. Eğimli/engebeli zeminde CZM'nin üstünlüğü birim
-  testlerle gösterildi, sahada etiketli veri ile doğrulanmalı.
+<a id="repository-layout"></a>
+## Repository layout, testing, roadmap, license
 
-## Bu kurulumda tespit edilenler
+```
+src/, include/     pipeline, ROS node, event recorder, synthetic sensor, benchmark
+msg/               ObstacleArray, TrackedObjectArray, CollisionWarning, ProcessingStats
+launch/            detection, replay, github_demo
+config/            detection.yaml (all parameters, commented), RViz demo profile
+scripts/           bag_tool, demo_visualizer, status_panel, obstacle_report, perf_report
+test/              gtest suites, launch tests, demo marker tests
+tools/             evaluation scripts (pseudo ground truth), diagram generator
+doc/               benchmarks, field notes, earlier reports
+assets/            demo media, architecture diagram
+```
 
-Geliştirme düzeneğine özgü gözlemler (senkron olmayan LiDAR saati, sensörün yanındaki masa,
-iç mekânda zemin durumu, Ethernet / IP notları) [doc/field_notes.md](doc/field_notes.md) dosyasında.
+```bash
+ROS_DOMAIN_ID=77 colcon test --packages-select helios_obstacle_detection
+colcon test-result --test-result-base build/helios_obstacle_detection --verbose
+```
 
-## Ayar ipuçları (`config/detection.yaml`)
+The tests cover:
+* Hungarian against brute force, and Kalman filter consistency.
+* Tracking through crossings, occlusions and merges.
+* Ego-motion on still, moving and degenerate scenes.
+* Ground segmentation on slopes, tables and failure cases.
+* TTC and risk, sensor health, and the thread pool.
+* End-to-end system tests on simulated scans, and the event recorder.
+* Demo markers: no blank text, no stale markers.
+* Absence of actuation topics in the ROS graph.
 
-* `ground.expected_height`: montaj yüksekliğinin eksi değeri (şu an −0.90 m); eğik montajda
-  `expected_normal`.
-* Sabit test tezgâhında ego-hareket kestirimi yerine `ego_motion.mode: assume_stationary`
-  kullanılabilir (araç üzerinde **kullanmayın**).
-* Yoğun dış ortam / daha fazla nokta: `threads: 0` (otomatik) ve `adaptive.target_ms` ile bütçe.
-* Yanlış "hareketli" kararları için: `tracking.moving_speed`, `motion_sigma_factor`,
-  `point_evidence_age_s`; daha temkinli risk için `risk.sigma_factor`, `risk.ego_radius`.
-* Zemin yöntemi: `ground.method: czm | ransac_zones`.
+Next version: [ROADMAP.md](ROADMAP.md). Changes: [CHANGELOG.rst](CHANGELOG.rst).
+Licensed under the [Apache License 2.0](LICENSE). RoboSense and Helios are trademarks of their
+owner. This project is not affiliated with RoboSense.

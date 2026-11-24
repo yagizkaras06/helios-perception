@@ -2,6 +2,25 @@
 Changelog for package helios_obstacle_detection
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.3.1 (2026-11-24)
+------------------
+* Sensor-free demo: ``synthetic_lidar`` publishes the ray-cast scenarios of the test simulator;
+  ``github_demo.launch.py`` runs the presentation view on the live stack, on a recording or on
+  simulated scans (``mode:=live|replay|synthetic``, ``rviz:=false`` for headless use).
+* ``demo_visualizer.py`` (display-only markers, uncertain values labelled, no stale / blank text) and
+  ``status_panel.py`` (rates, latency, health, warning).
+* Clustering: uniform 3D grid neighbour search, identical clusters to the k-d tree reference, ~3x
+  faster; stage timing no longer counts the sequential ego estimate as clustering.
+* Risk summary: ``max_risk_level`` skips STATIC tracks while the ego is STATIONARY
+  (``risk.summary_ignore_static_when_stationary``); per-track levels and thresholds unchanged.
+* Event recorder: per-trigger cooldown (``events.cooldown_s``).
+* Launch: ``bag_tool.py`` started directly, so player / recorder stop with the launch; line-buffered
+  progress output; clean exit on shutdown during playback.
+* Documentation: English README, benchmark report (live / offline / synthetic kept apart),
+  architecture diagram, roadmap; Turkish README kept as ``README.tr.md``.
+* Tests: demo marker rules (pytest), sensor-free demo end-to-end with the no-actuation check,
+  grid-vs-k-d-tree clustering equivalence, risk summary with a static neighbour.
+
 0.3.0 (2026-11-23)
 ------------------
 * Occlusion-aware tracking: TENTATIVE / CONFIRMED / OCCLUDED / LOST lifecycle with explained

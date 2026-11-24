@@ -3,3 +3,6 @@
 max-line-length = 100
 extend-ignore = D,Q,I
 exclude = build,install,log,.git
+per-file-ignores =
+    # SVG templates: one element per line
+    tools/diagrams/make_architecture.py: E501
