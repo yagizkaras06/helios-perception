@@ -137,6 +137,7 @@ void PerceptionPipeline::processFiltered(const CloudPtr & roi, double stamp, Fra
 
   CloudConstPtr obstacle_cloud = out.obstacle_cloud;
   Clock::time_point t3, t4;
+  Clock::time_point t_cluster0 = t2;   // clustering starts after the (sequential) ego estimate
   auto fixedEgo = [&]() {
       if (config_.ego_mode == EgoMode::kExternal) {
         out.ego = external_ego_;
@@ -158,6 +159,7 @@ void PerceptionPipeline::processFiltered(const CloudPtr & roi, double stamp, Fra
       const auto a = Clock::now();
       out.ego = ego_->update(*obstacle_cloud, stamp, exclusions_);
       out.times.ego_ms = ms(a, Clock::now());
+      t_cluster0 = Clock::now();
     } else {
       fixedEgo();
     }
@@ -311,7 +313,9 @@ void PerceptionPipeline::processFiltered(const CloudPtr & roi, double stamp, Fra
 
   out.times.voxel_ms = ms(t0, t1);
   out.times.ground_ms = ms(t1, t2);
-  out.times.clustering_ms = ms(t2, t3);
+  // with the static map the ego estimate runs first (sequentially) and is reported on its own;
+  // without it, it runs concurrently with clustering
+  out.times.clustering_ms = ms(t_cluster0, t3);
   out.times.boxes_ms = ms(t3, t4);
   out.times.tracking_ms = ms(t5, t6);
   out.times.total_ms = ms(t0, t6);

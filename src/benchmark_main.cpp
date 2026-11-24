@@ -176,7 +176,7 @@ struct TimingTable
 {
   std::map<std::string, Stat> st;
   std::vector<std::string> order{"roi_filter", "voxel_grid", "ground_segmentation", "clustering",
-    "bounding_box", "ego_motion(concurrent)", "tracking_risk", "total"};
+    "bounding_box", "ego_motion", "tracking_risk", "total"};
   void add(const StageTimes & t)
   {
     st["roi_filter"].add(t.roi_ms);
@@ -184,7 +184,7 @@ struct TimingTable
     st["ground_segmentation"].add(t.ground_ms);
     st["clustering"].add(t.clustering_ms);
     st["bounding_box"].add(t.boxes_ms);
-    st["ego_motion(concurrent)"].add(t.ego_ms);
+    st["ego_motion"].add(t.ego_ms);
     st["tracking_risk"].add(t.tracking_ms);
     st["total"].add(t.total_ms);
   }
